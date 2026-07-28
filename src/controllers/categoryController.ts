@@ -10,6 +10,9 @@ export const getCategories = async (req: Request, res: Response) => {
 
 
 
+
+
+
     
     const categories = await prisma.category.findMany({
       include: { subcategories: true }
