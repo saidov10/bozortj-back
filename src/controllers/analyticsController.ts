@@ -28,8 +28,12 @@ export const getSellerAnalytics = async (req: AuthRequest, res: Response) => {
         order: {
           select: { createdAt: true }
         },
-        product: {
-          select: { id: true, name: true }
+        variant: {
+          include: {
+            product: {
+              select: { id: true, name: true }
+            }
+          }
         }
       }
     });
@@ -45,15 +49,16 @@ export const getSellerAnalytics = async (req: AuthRequest, res: Response) => {
       totalItemsSold += item.quantity;
 
       // Group for top products
-      if (!productSalesCount[item.productId]) {
-        productSalesCount[item.productId] = {
-          name: item.product.name,
+      const product = item.variant.product;
+      if (!productSalesCount[product.id]) {
+        productSalesCount[product.id] = {
+          name: product.name,
           quantity: item.quantity,
           revenue: itemRevenue
         };
       } else {
-        productSalesCount[item.productId].quantity += item.quantity;
-        productSalesCount[item.productId].revenue += itemRevenue;
+        productSalesCount[product.id].quantity += item.quantity;
+        productSalesCount[product.id].revenue += itemRevenue;
       }
     });
 

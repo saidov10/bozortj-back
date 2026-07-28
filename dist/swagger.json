@@ -1,0 +1,2276 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "E-Commerce Multi-Role API (EN/RU/TJ)",
+    "description": "🇬🇧 **EN:** API documentation for the E-commerce platform supporting Buyers, Sellers, Admins, WebSockets chat, checkout, and metadata management.\n\n🇷🇺 **RU:** Документация API для e-commerce платформы с поддержкой Покупателей, Продавцов, Администраторов, чата на WebSockets, оформления заказов и управления метаданными.\n\n🇹🇯 **TJ:** Ҳуҷҷатҳои API барои платформаи e-commerce бо дастгирии Харидорон, Фурӯшандагон, Администраторҳо, чат дар WebSockets, барасмиятдарории фармоишҳо ва идоракунии метамаълумотҳо.",
+    "version": "1.4.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "🇬🇧 Registration, login, profile / 🇷🇺 Регистрация, вход, профиль / 🇹🇯 Бақайдгирӣ, воридшавӣ, профил"
+    },
+    {
+      "name": "Products",
+      "description": "🇬🇧 Catalog, search, filters / 🇷🇺 Каталог, поиск, фильтры / 🇹🇯 Каталог, ҷустуҷӯ, филтрҳо"
+    },
+    {
+      "name": "Shops",
+      "description": "🇬🇧 Public directory / 🇷🇺 Каталог магазинов / 🇹🇯 Феҳристи мағозаҳо"
+    },
+    {
+      "name": "Cart",
+      "description": "🇬🇧 Buyer shopping cart / 🇷🇺 Корзина покупателя / 🇹🇯 Сабати харидор"
+    },
+    {
+      "name": "Wishlist",
+      "description": "🇬🇧 Buyer wishlist / 🇷🇺 Список желаемого / 🇹🇯 Рӯйхати хоҳишҳо"
+    },
+    {
+      "name": "Chat",
+      "description": "🇬🇧 Messaging & history / 🇷🇺 Переписка и история / 🇹🇯 Мукотиба ва таърих"
+    },
+    {
+      "name": "Categories",
+      "description": "🇬🇧 Categories & subcategories / 🇷🇺 Категории и подкатегории / 🇹🇯 Категорияҳо ва зеркатгорияҳо"
+    },
+    {
+      "name": "Brands",
+      "description": "🇬🇧 Brand CRUD / 🇷🇺 Управление брендами / 🇹🇯 Идоракунии брендҳо"
+    },
+    {
+      "name": "Colors",
+      "description": "🇬🇧 Color CRUD / 🇷🇺 Управление цветами / 🇹🇯 Идоракунии рангҳо"
+    },
+    {
+      "name": "Orders",
+      "description": "🇬🇧 Checkout & tracking / 🇷🇺 Оформление и отслеживание / 🇹🇯 Барасмиятдарории фармоиш ва пайгирӣ"
+    },
+    {
+      "name": "Coupons",
+      "description": "🇬🇧 Promocodes / 🇷🇺 Промокоды и купоны / 🇹🇯 Промокодҳо ва купонҳо"
+    },
+    {
+      "name": "Analytics",
+      "description": "🇬🇧 Seller analytics / 🇷🇺 Аналитика для продавцов / 🇹🇯 Омори фурӯшандагон"
+    },
+    {
+      "name": "Notifications",
+      "description": "🇬🇧 Notification feeds / 🇷🇺 Лента уведомлений / 🇹🇯 Лентаи огоҳиномаҳо"
+    },
+    {
+      "name": "Admin Moderation",
+      "description": "🇬🇧 Complaints & blocking / 🇷🇺 Жалобы и блокировка / 🇹🇯 Шикоятҳо ва масдудкунӣ"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Check health / Проверить статус / Санҷиши статус",
+        "tags": [
+          "Authentication"
+        ],
+        "description": "🇬🇧 **EN:** Verify server is running.\n🇷🇺 **RU:** Проверить работоспособность сервера.\n🇹🇯 **TJ:** Санҷидани фаъолияти сервер.",
+        "responses": {
+          "200": {
+            "description": "Server is online"
+          }
+        }
+      }
+    },
+    "/api/auth/register/buyer": {
+      "post": {
+        "summary": "Register Buyer / Регистрация Покупателя / Бақайдгирии Харидор",
+        "tags": [
+          "Authentication"
+        ],
+        "description": "🇬🇧 **EN:** Create buyer account. Needs +992 phone.\n🇷🇺 **RU:** Регистрация покупателя. Телефон должен быть +992.\n🇹🇯 **TJ:** Бақайдгирии харидор. Телефон бояд +992 бошад.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email",
+                  "phone",
+                  "password"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Farhod"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "farhod@buyer.tj"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+992900123456"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "buyerpass12"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success / Успешно / Муваффақ"
+          },
+          "400": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/api/auth/register/seller": {
+      "post": {
+        "summary": "Register Seller / Регистрация Продавца / Бақайдгирии Фурӯшанда",
+        "tags": [
+          "Authentication"
+        ],
+        "description": "🇬🇧 **EN:** Create seller and shop profiles.\n🇷🇺 **RU:** Создать профиль продавца и магазина.\n🇹🇯 **TJ:** Сохтани профили фурӯшанда ва мағоза.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "shopName",
+                  "description",
+                  "email",
+                  "phone",
+                  "password"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Bob"
+                  },
+                  "shopName": {
+                    "type": "string",
+                    "example": "Tajik Tech Shop"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Best smartphone sales in Dushanbe"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "bob@seller.tj"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+992931123456"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "sellerpass12"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Seller registered successfully"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login / Авторизация / Воридшавӣ",
+        "tags": [
+          "Authentication"
+        ],
+        "description": "🇬🇧 **EN:** Login with email and password.\n🇷🇺 **RU:** Войти по почте и паролю.\n🇹🇯 **TJ:** Ворид шудан бо почта ва парол.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "bob@seller.tj"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "sellerpass12"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token returned"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get Profile / Получить профиль / Гирифтани профил",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Retrieve logged user info.\n🇷🇺 **RU:** Получить информацию об авторизованном пользователе.\n🇹🇯 **TJ:** Гирифтани маълумоти корбари воридшуда.",
+        "responses": {
+          "200": {
+            "description": "User details"
+          }
+        }
+      }
+    },
+    "/api/products": {
+      "get": {
+        "summary": "Get Products / Получить товары / Гирифтани молҳо",
+        "tags": [
+          "Products"
+        ],
+        "description": "🇬🇧 **EN:** Query catalog items with filters.\n🇷🇺 **RU:** Получить список товаров с фильтрами.\n🇹🇯 **TJ:** Гирифтани рӯйхати молҳо бо филтрҳо.",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subcategoryId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brandId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "colorId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shopId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Product / Создать товар / Сохтани мол",
+        "tags": [
+          "Products"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add product. (Sellers only)\n🇷🇺 **RU:** Добавить новый товар. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани моли нав. (Танҳо барои Фурӯшандагон)",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "description",
+                  "price",
+                  "colorId",
+                  "size",
+                  "stockQuantity",
+                  "categoryId",
+                  "brandId",
+                  "images"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "isOnDiscount": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "discountPrice": {
+                    "type": "number"
+                  },
+                  "colorId": {
+                    "type": "string"
+                  },
+                  "subcategoryId": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "string"
+                  },
+                  "stockQuantity": {
+                    "type": "integer"
+                  },
+                  "categoryId": {
+                    "type": "string"
+                  },
+                  "brandId": {
+                    "type": "string"
+                  },
+                  "images": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Product created"
+          }
+        }
+      }
+    },
+    "/api/products/{id}": {
+      "get": {
+        "summary": "Get Product details / Детали товара / Тафсилоти мол",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product details"
+          }
+        }
+      },
+      "put": {
+        "summary": "Edit Product / Изменить товар / Тағйир додани мол",
+        "tags": [
+          "Products"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Edit details. (Sellers only)\n🇷🇺 **RU:** Редактировать товар. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири мол. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Product / Удалить товар / Нест кардани мол",
+        "tags": [
+          "Products"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Delete item. (Sellers only)\n🇷🇺 **RU:** Удалить товар. (Только для Продавцов)\n🇹🇯 **TJ:** Нест кардани мол. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product deleted"
+          }
+        }
+      }
+    },
+    "/api/products/{id}/reviews": {
+      "post": {
+        "summary": "Create Review / Написать отзыв / Навиштани тақриз",
+        "tags": [
+          "Products"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Rate and review product. (Buyers only)\n🇷🇺 **RU:** Оставить отзыв на товар. (Только для Покупателей)\n🇹🇯 **TJ:** Гузоштани фикру мулоҳиза. (Танҳо барои Харидорон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rating"
+                ],
+                "properties": {
+                  "rating": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "example": 5
+                  },
+                  "comment": {
+                    "type": "string",
+                    "example": "Great!"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Review saved"
+          }
+        }
+      }
+    },
+    "/api/shops": {
+      "get": {
+        "summary": "Get Shops / Список магазинов / Рӯйхати мағозаҳо",
+        "tags": [
+          "Shops"
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shops list"
+          }
+        }
+      }
+    },
+    "/api/shops/{id}": {
+      "get": {
+        "summary": "Get Shop details / Детали магазина / Тафсилоти мағоза",
+        "tags": [
+          "Shops"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shop details"
+          }
+        }
+      }
+    },
+    "/api/cart": {
+      "get": {
+        "summary": "Get Cart / Получить корзину / Гирифтани сабад",
+        "tags": [
+          "Cart"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** View shopping cart. (Buyers only)\n🇷🇺 **RU:** Посмотреть корзину покупок. (Только для Покупателей)\n🇹🇯 **TJ:** Дидани сабади харид. (Танҳо барои Харидорон)",
+        "responses": {
+          "200": {
+            "description": "Cart list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add to Cart / Добавить в корзину / Илова ба сабад",
+        "tags": [
+          "Cart"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add product to cart. (Buyers only)\n🇷🇺 **RU:** Добавить товар в корзину. (Только для Покупателей)\n🇹🇯 **TJ:** Илова кардани мол ба сабад. (Танҳо барои Харидорон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "productId",
+                  "quantity"
+                ],
+                "properties": {
+                  "productId": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added"
+          }
+        }
+      }
+    },
+    "/api/cart/{id}": {
+      "put": {
+        "summary": "Update Cart Item / Изменить количество / Навсозии сабад",
+        "tags": [
+          "Cart"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Update item quantity. (Buyers only)\n🇷🇺 **RU:** Изменить количество товара. (Только для Покупателей)\n🇹🇯 **TJ:** Навсозии миқдори мол дар сабад. (Танҳо барои Харидорон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quantity"
+                ],
+                "properties": {
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove from Cart / Удалить из корзины / Нест кардан аз сабад",
+        "tags": [
+          "Cart"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Remove cart item. (Buyers only)\n🇷🇺 **RU:** Удалить товар из корзины. (Только для Покупателей)\n🇹🇯 **TJ:** Нест кардани мол аз сабад. (Танҳо барои Харидорон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/api/wishlist": {
+      "get": {
+        "summary": "Get Wishlist / Список желаемого / Рӯйхати хоҳишҳо",
+        "tags": [
+          "Wishlist"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** View wishlist items. (Buyers only)\n🇷🇺 **RU:** Посмотреть список желаемого. (Только для Покупателей)\n🇹🇯 **TJ:** Дидани рӯйхати хоҳишҳо. (Танҳо барои Харидорон)",
+        "responses": {
+          "200": {
+            "description": "Wishlist products"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add to Wishlist / Добавить в избранное / Илова ба хоҳишҳо",
+        "tags": [
+          "Wishlist"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add product to wishlist. (Buyers only)\n🇷🇺 **RU:** Добавить товар в избранное. (Только для Покупателей)\n🇹🇯 **TJ:** Илова кардани мол ба рӯйхати хоҳишҳо. (Танҳо барои Харидорон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "productId"
+                ],
+                "properties": {
+                  "productId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added"
+          }
+        }
+      }
+    },
+    "/api/wishlist/{id}": {
+      "delete": {
+        "summary": "Remove from Wishlist / Удалить из избранного / Нест кардан аз хоҳишҳо",
+        "tags": [
+          "Wishlist"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Remove wishlist item. (Buyers only)\n🇷🇺 **RU:** Удалить товар из избранного. (Только для Покупателей)\n🇹🇯 **TJ:** Нест кардани мол аз рӯйхати хоҳишҳо. (Танҳо барои Харидорон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/api/chat/conversations": {
+      "get": {
+        "summary": "Get Conversations / Список бесед / Рӯйхати сӯҳбатҳо",
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Get active chat sessions. (Buyers/Sellers)\n🇷🇺 **RU:** Получить список бесед чата. (Покупатели/Продавцы)\n🇹🇯 **TJ:** Гирифтани рӯйхати сӯҳбатҳои чат. (Харидорон/Фурӯшандагон)",
+        "responses": {
+          "200": {
+            "description": "List"
+          }
+        }
+      }
+    },
+    "/api/chat/history/{partnerId}": {
+      "get": {
+        "summary": "Get Chat History / История переписки / Таърихи мукотиба",
+        "tags": [
+          "Chat"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Get message logs with user. (Buyers/Sellers)\n🇷🇺 **RU:** Получить историю переписки с пользователем. (Покупатели/Продавцы)\n🇹🇯 **TJ:** Гирифтани таърихи мукотиба бо корбар. (Харидорон/Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "partnerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History logs"
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "summary": "Get Categories / Список категорий / Рӯйхати категорияҳо",
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "200": {
+            "description": "Categories list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Category / Создать категорию / Сохтани категория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add category. (Sellers only)\n🇷🇺 **RU:** Добавить категорию. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани категория. (Танҳо барои Фурӯшандагон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "put": {
+        "summary": "Edit Category / Изменить категорию / Тағйири категория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Edit category. (Sellers only)\n🇷🇺 **RU:** Изменить название категории. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири номи категория. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Category / Удалить категорию / Нест кардани категория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Delete category. (Sellers only)\n🇷🇺 **RU:** Удалить категорию. (Только для Продавцов)\n🇹🇯 **TJ:** Нест кардани категория. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/api/categories/{categoryId}/subcategories": {
+      "get": {
+        "summary": "Get Subcategories / Получить подкатегории / Гирифтани зеркатгорияҳо",
+        "tags": [
+          "Categories"
+        ],
+        "parameters": [
+          {
+            "name": "categoryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subcategories list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Subcategory / Создать подкатегорию / Сохтани зеркатгория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add subcategory. (Sellers only)\n🇷🇺 **RU:** Добавить подкатегорию. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани зеркатгория. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/categories/subcategories/{id}": {
+      "put": {
+        "summary": "Edit Subcategory / Изменить подкатегорию / Таҳрири зеркатгория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Edit subcategory. (Sellers only)\n🇷🇺 **RU:** Изменить подкатегорию. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири зеркатгория. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Subcategory / Удалить подкатегорию / Нест кардани зеркатгория",
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Delete subcategory. (Sellers only)\n🇷🇺 **RU:** Удалить подкатегорию. (Только для Продавцов)\n🇹🇯 **TJ:** Нест кардани зеркатгория. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/api/brands": {
+      "get": {
+        "summary": "Get Brands / Список брендов / Рӯйхати брендҳо",
+        "tags": [
+          "Brands"
+        ],
+        "responses": {
+          "200": {
+            "description": "Brands list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Brand / Создать бренд / Сохтани бренд",
+        "tags": [
+          "Brands"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add brand. (Sellers only)\n🇷🇺 **RU:** Добавить новый бренд. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани бренди нав. (Танҳо барои Фурӯшандагон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/brands/{id}": {
+      "put": {
+        "summary": "Edit Brand / Изменить бренд / Таҳрири бренд",
+        "tags": [
+          "Brands"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Edit brand. (Sellers only)\n🇷🇺 **RU:** Редактировать бренд. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири бренд. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Brand / Удалить бренд / Нест кардани бренд",
+        "tags": [
+          "Brands"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Delete brand. (Sellers only)\n🇷🇺 **RU:** Удалить бренд. (Только для Продавцов)\n🇹🇯 **TJ:** Нест кардани бренд. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/api/colors": {
+      "get": {
+        "summary": "Get Colors / Список цветов / Рӯйхати рангҳо",
+        "tags": [
+          "Colors"
+        ],
+        "responses": {
+          "200": {
+            "description": "Colors list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Color / Создать цвет / Сохтани ранг",
+        "tags": [
+          "Colors"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add color. (Sellers only)\n🇷🇺 **RU:** Добавить новый цвет. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани ранги нав. (Танҳо барои Фурӯшандагон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/colors/{id}": {
+      "put": {
+        "summary": "Edit Color / Изменить цвет / Таҳрири ранг",
+        "tags": [
+          "Colors"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Edit color. (Sellers only)\n🇷🇺 **RU:** Редактировать цвет. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири ранг. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Color / Удалить цвет / Нест кардани ранг",
+        "tags": [
+          "Colors"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Delete color. (Sellers only)\n🇷🇺 **RU:** Удалить цвет. (Только для Продавцов)\n🇹🇯 **TJ:** Нест кардани ранг. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "post": {
+        "summary": "Place Order / Оформить заказ / Барасмиятдарории фармоиш",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Create order from cart items. (Buyers only)\n🇷🇺 **RU:** Оформить заказ из корзины. (Только для Покупателей)\n🇹🇯 **TJ:** Сохтани фармоиш аз молҳои сабад. (Танҳо барои Харидорон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "couponCode": {
+                    "type": "string",
+                    "example": "SAVE10"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get Orders / Список заказов / Рӯйхати фармоишҳо",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Get history. (Buyers: own; Sellers: shop; Admins: all)\n🇷🇺 **RU:** Получить историю заказов. (Покупатели: свои; Продавцы: магазина; Админы: все)\n🇹🇯 **TJ:** Гирифтани таърихи фармоишҳо. (Харидорон: худ; Фурӯшандагон: мағоза; Админҳо: ҳама)",
+        "responses": {
+          "200": {
+            "description": "Orders list"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "summary": "Get Order details / Детали заказа / Тафсилоти фармоиш",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order detail"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/status": {
+      "put": {
+        "summary": "Update Status / Изменить статус / Навсозии статус",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Update order shipping status. (Sellers or Admins)\n🇷🇺 **RU:** Изменить статус доставки заказа. (Продавцы или Админы)\n🇹🇯 **TJ:** Навсозии статуси интиқоли фармоиш. (Фурӯшандагон ё Админҳо)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "PENDING",
+                      "PROCESSING",
+                      "SHIPPED",
+                      "DELIVERED",
+                      "CANCELLED"
+                    ],
+                    "example": "SHIPPED"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/coupons": {
+      "get": {
+        "summary": "Get Coupons / Список купонов / Рӯйхати купонҳо",
+        "tags": [
+          "Coupons"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coupons list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Coupon / Создать промокод / Сохтани купон",
+        "tags": [
+          "Coupons"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Generate promo code. (Sellers or Admins)\n🇷🇺 **RU:** Создать новый купон/промокод. (Продавцы или Admins)\n🇹🇯 **TJ:** Сохтани купон/промокоди нав. (Фурӯшандагон ё Админҳо)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "discountType",
+                  "discountValue"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "example": "WINTER25"
+                  },
+                  "discountType": {
+                    "type": "string",
+                    "enum": [
+                      "PERCENT",
+                      "FIXED"
+                    ],
+                    "example": "PERCENT"
+                  },
+                  "discountValue": {
+                    "type": "number",
+                    "example": 25
+                  },
+                  "minPurchase": {
+                    "type": "number",
+                    "default": 0
+                  },
+                  "maxUsage": {
+                    "type": "integer"
+                  },
+                  "expiryDate": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Coupon created"
+          }
+        }
+      }
+    },
+    "/api/coupons/{id}": {
+      "delete": {
+        "summary": "Delete Coupon / Удалить промокод / Нест кардани купон",
+        "tags": [
+          "Coupons"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Remove code. (Sellers or Admins)\n🇷🇺 **RU:** Удалить промокод. (Продавцы или Админы)\n🇹🇯 **TJ:** Нест кардани купон. (Фурӯшандагон ё Админҳо)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coupon deleted"
+          }
+        }
+      }
+    },
+    "/api/analytics": {
+      "get": {
+        "summary": "Get Analytics / Получить аналитику / Гирифтани омор",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Get shop revenue and product metrics. (Sellers only)\n🇷🇺 **RU:** Статистика доходов и продаж магазина. (Только для Продавцов)\n🇹🇯 **TJ:** Омори даромад ва фурӯши мағоза. (Танҳо барои Фурӯшандагон)",
+        "responses": {
+          "200": {
+            "description": "Analytics overview"
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Get Notifications / Уведомления / Огоҳиномаҳо",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Retrieve in-app notification logs.\n🇷🇺 **RU:** Получить список входящих уведомлений.\n🇹🇯 **TJ:** Гирифтани рӯйхати огоҳиномаҳои воридотӣ.",
+        "responses": {
+          "200": {
+            "description": "Notifications list"
+          }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "put": {
+        "summary": "Mark as Read / Прочитать / Хонда шуд",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Mark alert as read.\n🇷🇺 **RU:** Отметить уведомление как прочитанное.\n🇹🇯 **TJ:** Огоҳиномаро ҳамчун хондашуда қайд кардан.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      }
+    },
+    "/api/admin/reports": {
+      "post": {
+        "summary": "File Report / Отправить жалобу / Фиристодани шикоят",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Report a shop or product. (Buyers only)\n🇷🇺 **RU:** Отправить жалобу на магазин или товар. (Только для Покупателей)\n🇹🇯 **TJ:** Фиристодани шикоят нисбати мағоза ё мол. (Танҳо барои Харидорон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "productId": {
+                    "type": "string"
+                  },
+                  "shopId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "example": "Fake goods description"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Report filed"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get Reports / Получить жалобы / Гирифтани шикоятҳо",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** List filed customer complaints. (Admins only)\n🇷🇺 **RU:** Получить список жалоб пользователей. (Только для Администраторов)\n🇹🇯 **TJ:** Гирифтани рӯйхати шикоятҳои корбарон. (Танҳо барои Администраторҳо)",
+        "responses": {
+          "200": {
+            "description": "All complaints"
+          }
+        }
+      }
+    },
+    "/api/admin/reports/{id}": {
+      "put": {
+        "summary": "Moderate Report / Решение жалобы / Баррасии шикоят",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Resolve or dismiss complaint status. (Admins only)\n🇷🇺 **RU:** Изменить статус жалобы (разрешить или отклонить). (Только для Администраторов)\n🇹🇯 **TJ:** Тағйири статуси шикоят (ҳал кардан ё рад кардан). (Танҳо барои Администраторҳо)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "RESOLVED",
+                      "DISMISSED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report moderated"
+          }
+        }
+      }
+    },
+    "/api/admin/users/{userId}/block": {
+      "put": {
+        "summary": "Block User / Блокировка пользователя / Масдуд кардани корбар",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Toggle user suspension status. (Admins only)\n🇷🇺 **RU:** Заблокировать или разблокировать аккаунт пользователя. (Только для Администраторов)\n🇹🇯 **TJ:** Масдуд ё фаъол кардани аккаунти корбар. (Танҳо барои Администраторҳо)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "block"
+                ],
+                "properties": {
+                  "block": {
+                    "type": "boolean",
+                    "description": "true/false"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Block status updated"
+          }
+        }
+      }
+    },
+    "/api/addresses": {
+      "get": {
+        "summary": "Get Addresses / Список адресов / Рӯйхати адресҳо",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** List buyer's saved addresses.\n🇷🇺 **RU:** Получить список сохраненных адресов покупателя.\n🇹🇯 **TJ:** Гирифтани рӯйхати адресҳои сабтшудаи харидор.",
+        "responses": {
+          "200": {
+            "description": "Addresses list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Address / Создать адрес / Сохтани адрес",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Add a new address to the address book. (Buyers only)\n🇷🇺 **RU:** Добавить новый адрес доставки. (Только для Покупателей)\n🇹🇯 **TJ:** Иловаи адреси нави интиқол. (Танҳо барои Харидорон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "city",
+                  "street",
+                  "building"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Home"
+                  },
+                  "city": {
+                    "type": "string",
+                    "example": "Dushanbe"
+                  },
+                  "street": {
+                    "type": "string",
+                    "example": "Rudaki Ave"
+                  },
+                  "building": {
+                    "type": "string",
+                    "example": "12"
+                  },
+                  "apartment": {
+                    "type": "string",
+                    "example": "4B"
+                  },
+                  "postalCode": {
+                    "type": "string",
+                    "example": "734000"
+                  },
+                  "landmark": {
+                    "type": "string",
+                    "example": "Near Opera & Ballet Theater"
+                  },
+                  "isDefault": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Address created"
+          }
+        }
+      }
+    },
+    "/api/addresses/{id}": {
+      "put": {
+        "summary": "Edit Address / Изменить адрес / Таҳрири адрес",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "street": {
+                    "type": "string"
+                  },
+                  "building": {
+                    "type": "string"
+                  },
+                  "apartment": {
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "type": "string"
+                  },
+                  "landmark": {
+                    "type": "string"
+                  },
+                  "isDefault": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Address updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Address / Удалить адрес / Нест кардани адрес",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Address deleted"
+          }
+        }
+      }
+    },
+    "/api/addresses/{id}/default": {
+      "put": {
+        "summary": "Set Default Address / Сделать основным / Сабти адрес ҳамчун асосӣ",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Address set as default"
+          }
+        }
+      }
+    },
+    "/api/products/reviews/{id}/reply": {
+      "post": {
+        "summary": "Reply to Review / Ответить на отзыв / Ҷавоб ба тақриз",
+        "tags": [
+          "Products"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Post a reply to customer review. (Sellers only)\n🇷🇺 **RU:** Опубликовать ответ продавца на отзыв покупателя. (Только для Продавцов)\n🇹🇯 **TJ:** Навиштани ҷавоби фурӯшанда ба фикри харидор. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Review ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reply"
+                ],
+                "properties": {
+                  "reply": {
+                    "type": "string",
+                    "example": "Thank you for shopping with us!"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reply saved successfully"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/refund": {
+      "post": {
+        "summary": "Request Refund / Оформить возврат / Дархости бозпасдиҳӣ",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Request order return and refund (Allows multiple photos). (Buyers only)\n🇷🇺 **RU:** Подать заявку на возврат товара и средств (можно прикрепить фото). (Только для Покупателей)\n🇹🇯 **TJ:** Пешниҳоди дархости бозпасдиҳии мол ва маблағ (бо аксҳо). (Танҳо барои Харидорон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Order ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "example": "Defective item received"
+                  },
+                  "refundImages": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Refund request submitted"
+          }
+        }
+      },
+      "put": {
+        "summary": "Process Refund / Подтвердить или отклонить возврат / Қабул ё радди бозпасдиҳӣ",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Approve, reject or mark return request as disputed. (Sellers only)\n🇷🇺 **RU:** Одобрить, отклонить или перевести возврат в спорный статус. (Только для Продавцов)\n🇹🇯 **TJ:** Қабул, рад ё баҳснок кардани дархости бозпасдиҳӣ. (Танҳо барои Фурӯшандагон)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Order ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED",
+                      "DISPUTED"
+                    ],
+                    "example": "APPROVED"
+                  },
+                  "explanation": {
+                    "type": "string",
+                    "example": "Refund request approved, stock returned."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Refund request processed successfully"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/refund/dispute": {
+      "put": {
+        "summary": "Resolve Refund Dispute / Разрешить спор / Ҳалли баҳси бозпасдиҳӣ",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Resolve disputed refund request as approved or rejected. (Admins only)\n🇷🇺 **RU:** Закрыть спор по возврату в пользу покупателя или продавца. (Только для Администраторов)\n🇹🇯 **TJ:** Баррасии ниҳоии баҳси бозпасдиҳӣ (қабул ё рад). (Танҳо барои Администраторҳо)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Order ID"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED"
+                    ],
+                    "example": "APPROVED"
+                  },
+                  "explanation": {
+                    "type": "string",
+                    "example": "Disputed item was validated, refunding."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispute resolved successfully"
+          }
+        }
+      }
+    },
+    "/api/shops/settings/auto-reply": {
+      "put": {
+        "summary": "Shop Auto-Reply Settings / Настройки автоответчика / Танзимоти чат-бот",
+        "tags": [
+          "Shops"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Update seller's chatbot settings and offline message. (Sellers only)\n🇷🇺 **RU:** Изменить настройки автоответчика и текст приветственного сообщения. (Только для Продавцов)\n🇹🇯 **TJ:** Навсозии танзимот ва матни паёми худкори мағоза. (Танҳо барои Фурӯшандагон)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "autoReplyText": {
+                    "type": "string",
+                    "example": "Hello! We are currently offline, but we will contact you shortly."
+                  },
+                  "autoReplyEnabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Shop settings updated"
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "Get All Users / Получить список пользователей / Рӯйхати ҳамаи корбарон",
+        "tags": [
+          "Admin Moderation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Retrieve list of all users in the system. (Admins only)\n🇷🇺 **RU:** Получить список всех пользователей системы. (Только для Администраторов)\n🇹🇯 **TJ:** Гирифтани рӯйхати ҳамаи корбарони система. (Танҳо барои Администраторҳо)",
+        "responses": {
+          "200": {
+            "description": "List of users"
+          }
+        }
+      }
+    }
+  }
+}
