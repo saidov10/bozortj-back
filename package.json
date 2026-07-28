@@ -5,8 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "npx prisma generate && tsc && node -e \"require('fs').copyFileSync('src/swagger.json','dist/swagger.json')\"",
-    "postinstall": "prisma generate",
+    "build": "npx prisma generate && npx tsc && node -e \"require('fs').copyFileSync('src/swagger.json','dist/swagger.json')\"",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
