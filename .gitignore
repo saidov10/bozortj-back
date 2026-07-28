@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Prisma generated client & local SQLite db
+prisma/dev.db
+prisma/dev.db-journal
+
+# uploaded files (local)
+uploads/
