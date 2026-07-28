@@ -1,0 +1,105 @@
+### E-Commerce Backend API Endpoints Reference
+
+@baseUrl = http://localhost:5000/api
+
+### 1. Health check
+GET {{baseUrl}}/health
+
+### 2. Admin: Get Categories
+GET {{baseUrl}}/admin/categories
+
+### 3. Admin: Get Brands
+GET {{baseUrl}}/admin/brands
+
+### 4. Auth: Register Buyer
+# Note: You can also use multipart/form-data to upload an avatar image (field 'avatar').
+# Below is standard JSON registration.
+POST {{baseUrl}}/auth/register/buyer
+Content-Type: application/json
+
+{
+  "name": "Jane Buyer",
+  "email": "jane@buyer.com",
+  "phone": "+992918111111",
+  "password": "buyerpassword"
+}
+
+### 5. Auth: Register Seller & Shop
+# Note: You can upload an avatar image using field 'avatar' in multipart/form-data.
+POST {{baseUrl}}/auth/register/seller
+Content-Type: application/json
+
+{
+  "name": "Bob Seller",
+  "shopName": "Best Electronics",
+  "description": "Premium electronics store in Dushanbe",
+  "email": "bob@seller.com",
+  "phone": "+992901222222",
+  "password": "sellerpassword"
+}
+
+### 6. Auth: Login (Works for Buyers, Sellers, Admins)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "bob@seller.com",
+  "password": "sellerpassword"
+}
+
+### Save login token
+@token = {{login.response.body.token}}
+
+### 7. Auth: Get Current Profile
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### 8. Products: Get All Products (Public)
+# Query Parameters: search, categoryId, brandId, color, size, shopId
+GET {{baseUrl}}/products?search=phone
+
+### 9. Products: Get Product Details (Public)
+# Replace :id with actual product uuid
+GET {{baseUrl}}/products/replace-with-product-uuid
+
+### 10. Shops: Get List of Shops (Public)
+GET {{baseUrl}}/shops
+
+### 11. Shops: Get Shop Details & Products (Public)
+GET {{baseUrl}}/shops/replace-with-shop-uuid
+
+### 12. Cart: Get Cart (Buyer Only)
+GET {{baseUrl}}/cart
+Authorization: Bearer {{token}}
+
+### 13. Cart: Add Item to Cart (Buyer Only)
+POST {{baseUrl}}/cart
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "productId": "replace-with-product-uuid",
+  "quantity": 1
+}
+
+### 14. Wishlist: Get Wishlist (Buyer Only)
+GET {{baseUrl}}/wishlist
+Authorization: Bearer {{token}}
+
+### 15. Wishlist: Add Item to Wishlist (Buyer Only)
+POST {{baseUrl}}/wishlist
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "productId": "replace-with-product-uuid"
+}
+
+### 16. Chat: Get Conversations list (Buyer/Seller Only)
+GET {{baseUrl}}/chat/conversations
+Authorization: Bearer {{token}}
+
+### 17. Chat: Get Message History (Buyer/Seller Only)
+GET {{baseUrl}}/chat/history/replace-with-partner-user-uuid
+Authorization: Bearer {{token}}
