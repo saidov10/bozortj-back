@@ -7,6 +7,10 @@ import { AuthRequest } from '../middleware/auth';
 // Get all categories with subcategories
 export const getCategories = async (req: Request, res: Response) => {
   try {
+
+
+
+    
     const categories = await prisma.category.findMany({
       include: { subcategories: true }
     });
