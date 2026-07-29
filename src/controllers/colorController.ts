@@ -12,10 +12,10 @@ export const getColors = async (req: Request, res: Response) => {
   }
 };
 
-// Create a color (Seller only)
+// Create a color (Seller/Admin only)
 export const createColor = async (req: AuthRequest, res: Response) => {
   try {
-    const { name } = req.body;
+    const { name, hexCode } = req.body;
     if (!name || name.trim() === '') {
       return res.status(400).json({ message: 'Color name is required' });
     }
@@ -26,7 +26,7 @@ export const createColor = async (req: AuthRequest, res: Response) => {
     }
 
     const color = await prisma.color.create({
-      data: { name }
+      data: { name, hexCode: hexCode ?? null }
     });
     return res.status(201).json({ message: 'Color created successfully', color });
   } catch (error: any) {
@@ -34,11 +34,11 @@ export const createColor = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Update a color (Seller only)
+// Update a color (Seller/Admin only)
 export const updateColor = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, hexCode } = req.body;
     if (!name || name.trim() === '') {
       return res.status(400).json({ message: 'Color name is required' });
     }
@@ -48,9 +48,12 @@ export const updateColor = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Color not found' });
     }
 
+    const dataToUpdate: { name: string; hexCode?: string | null } = { name };
+    if (hexCode !== undefined) dataToUpdate.hexCode = hexCode;
+
     const updated = await prisma.color.update({
       where: { id },
-      data: { name }
+      data: dataToUpdate
     });
     return res.status(200).json({ message: 'Color updated successfully', color: updated });
   } catch (error: any) {

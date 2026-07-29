@@ -12,9 +12,9 @@ const router = Router();
 // Public read
 router.get('/', getColors);
 
-// Seller-only writes
-router.post('/', authenticate, authorize(['SELLER']), createColor);
-router.put('/:id', authenticate, authorize(['SELLER']), updateColor);
-router.delete('/:id', authenticate, authorize(['SELLER']), deleteColor);
+// Seller/Admin writes
+router.post('/', authenticate, authorize(['SELLER', 'ADMIN']), createColor);
+router.put('/:id', authenticate, authorize(['SELLER', 'ADMIN']), updateColor);
+router.delete('/:id', authenticate, authorize(['SELLER', 'ADMIN']), deleteColor);
 
 export default router;

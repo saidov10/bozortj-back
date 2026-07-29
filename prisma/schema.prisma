@@ -80,6 +80,7 @@ model Brand {
 model Color {
   id       String           @id @default(uuid())
   name     String           @unique
+  hexCode  String?          // e.g. "#FF0000" for rendering color swatches
   products Product[]
   variants ProductVariant[]
 }

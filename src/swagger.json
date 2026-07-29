@@ -1248,7 +1248,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "🇬🇧 **EN:** Add color. (Sellers only)\n🇷🇺 **RU:** Добавить новый цвет. (Только для Продавцов)\n🇹🇯 **TJ:** Илова кардани ранги нав. (Танҳо барои Фурӯшандагон)",
+        "description": "🇬🇧 **EN:** Add color. (Sellers & Admins)\n🇷🇺 **RU:** Добавить новый цвет. (Продавцы и Администраторы)\n🇹🇯 **TJ:** Илова кардани ранги нав. (Фурӯшандагон ва Администраторҳо)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1259,7 +1259,13 @@
                 ],
                 "properties": {
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Red"
+                  },
+                  "hexCode": {
+                    "type": "string",
+                    "example": "#FF0000",
+                    "description": "Optional hex color code for rendering a swatch"
                   }
                 }
               }
@@ -1284,7 +1290,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "🇬🇧 **EN:** Edit color. (Sellers only)\n🇷🇺 **RU:** Редактировать цвет. (Только для Продавцов)\n🇹🇯 **TJ:** Таҳрири ранг. (Танҳо барои Фурӯшандагон)",
+        "description": "🇬🇧 **EN:** Edit color. (Sellers & Admins)\n🇷🇺 **RU:** Редактировать цвет. (Продавцы и Администраторы)\n🇹🇯 **TJ:** Таҳрири ранг. (Фурӯшандагон ва Администраторҳо)",
         "parameters": [
           {
             "name": "id",
@@ -1305,7 +1311,13 @@
                 ],
                 "properties": {
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Red"
+                  },
+                  "hexCode": {
+                    "type": "string",
+                    "example": "#FF0000",
+                    "description": "Optional hex color code for rendering a swatch"
                   }
                 }
               }

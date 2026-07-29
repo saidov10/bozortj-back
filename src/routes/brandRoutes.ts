@@ -12,9 +12,9 @@ const router = Router();
 // Public read
 router.get('/', getBrands);
 
-// Seller-only writes
-router.post('/', authenticate, authorize(['SELLER']), createBrand);
-router.put('/:id', authenticate, authorize(['SELLER']), updateBrand);
-router.delete('/:id', authenticate, authorize(['SELLER']), deleteBrand);
+// Seller/Admin writes
+router.post('/', authenticate, authorize(['SELLER', 'ADMIN']), createBrand);
+router.put('/:id', authenticate, authorize(['SELLER', 'ADMIN']), updateBrand);
+router.delete('/:id', authenticate, authorize(['SELLER', 'ADMIN']), deleteBrand);
 
 export default router;
