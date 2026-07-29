@@ -7,6 +7,14 @@
   },
   "servers": [
     {
+      "url": "/",
+      "description": "Current host (works on Render and locally)"
+    },
+    {
+      "url": "https://bozortj-back.onrender.com",
+      "description": "Render production server"
+    },
+    {
       "url": "http://localhost:5000",
       "description": "Local development server"
     }
