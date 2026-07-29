@@ -2,6 +2,8 @@
 // The frontend fetches these to render a dynamic product form per category,
 // and the backend uses them to validate required category-specific fields.
 
+import { categoryEnFromTj } from './translations';
+
 export type AttributeFieldType = 'text' | 'number' | 'select' | 'boolean';
 
 export interface AttributeField {
@@ -167,8 +169,15 @@ export const defaultAttributeFields: AttributeField[] = [
 ];
 
 export const getAttributeFields = (categoryName?: string | null): AttributeField[] => {
-  if (categoryName && categoryAttributes[categoryName]) {
-    return categoryAttributes[categoryName];
+  if (categoryName) {
+    // Names are stored in Tajik; resolve back to the English template key.
+    if (categoryAttributes[categoryName]) {
+      return categoryAttributes[categoryName];
+    }
+    const enKey = categoryEnFromTj[categoryName];
+    if (enKey && categoryAttributes[enKey]) {
+      return categoryAttributes[enKey];
+    }
   }
   return defaultAttributeFields;
 };

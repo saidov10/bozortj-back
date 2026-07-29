@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { categoryTj, subcategoryTj, colorTj, tj } from '../src/config/translations';
 
 const prisma = new PrismaClient();
 
@@ -176,25 +177,27 @@ async function main() {
     }
   ];
 
-  console.log('Creating categories and subcategories...');
+  console.log('Creating categories and subcategories (Tajik)...');
   for (const cat of categoryData) {
+    const catName = tj(categoryTj, cat.name);
     const category = await prisma.category.upsert({
-      where: { name: cat.name },
+      where: { name: catName },
       update: {},
-      create: { name: cat.name }
+      create: { name: catName }
     });
 
     for (const subName of cat.subcategories) {
+      const subNameTj = tj(subcategoryTj, subName);
       await prisma.subcategory.upsert({
         where: {
           name_categoryId: {
-            name: subName,
+            name: subNameTj,
             categoryId: category.id
           }
         },
         update: {},
         create: {
-          name: subName,
+          name: subNameTj,
           categoryId: category.id
         }
       });
@@ -287,12 +290,13 @@ async function main() {
     { name: 'Transparent', hexCode: null }
   ];
 
-  console.log('Creating colors...');
+  console.log('Creating colors (Tajik)...');
   for (const { name, hexCode } of colors) {
+    const nameTj = tj(colorTj, name);
     await prisma.color.upsert({
-      where: { name },
+      where: { name: nameTj },
       update: { hexCode },
-      create: { name, hexCode }
+      create: { name: nameTj, hexCode }
     });
   }
 
