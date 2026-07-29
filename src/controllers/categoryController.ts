@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { getAttributeFields } from '../config/categoryAttributes';
 
 // --- CATEGORIES ---
 
@@ -17,9 +18,31 @@ export const getCategories = async (req: Request, res: Response) => {
     const categories = await prisma.category.findMany({
       include: { subcategories: true }
     });
-    return res.status(200).json({ categories });
+    const categoriesWithFields = categories.map((c) => ({
+      ...c,
+      attributeFields: getAttributeFields(c.name)
+    }));
+    return res.status(200).json({ categories: categoriesWithFields });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving categories', error: error.message });
+  }
+};
+
+// Get the category-specific product form fields for one category
+export const getCategoryAttributes = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const category = await prisma.category.findUnique({ where: { id } });
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+    return res.status(200).json({
+      categoryId: category.id,
+      name: category.name,
+      attributeFields: getAttributeFields(category.name)
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving category attributes', error: error.message });
   }
 };
 

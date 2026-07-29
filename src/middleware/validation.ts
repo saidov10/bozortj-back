@@ -51,6 +51,7 @@ export const registerSellerValidator = [
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
+  body('categoryId').trim().notEmpty().withMessage('Please choose the category your shop will sell in'),
   validate
 ];
 
@@ -88,9 +89,24 @@ export const productValidator = [
   body('colorId').trim().notEmpty().withMessage('Color ID is required'),
   body('size').trim().notEmpty().withMessage('Size is required'),
   body('stockQuantity').isInt({ min: 0 }).withMessage('Stock quantity must be a non-negative integer'),
-  body('categoryId').trim().notEmpty().withMessage('Category ID is required'),
+  // categoryId is optional here — the backend forces it to the seller's shop category
+  body('categoryId').optional().trim(),
   body('subcategoryId').optional().trim(),
   body('brandId').trim().notEmpty().withMessage('Brand ID is required'),
+  body('attributes')
+    .optional()
+    .custom((val) => {
+      if (val === '' || val === null || val === undefined) return true;
+      try {
+        const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Attributes must be a JSON object of key-value pairs');
+        }
+        return true;
+      } catch (err: any) {
+        throw new Error(err.message || 'Attributes is not a valid JSON object');
+      }
+    }),
   body('variants')
     .optional()
     .custom((val) => {

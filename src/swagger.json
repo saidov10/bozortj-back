@@ -170,7 +170,8 @@
                   "description",
                   "email",
                   "phone",
-                  "password"
+                  "password",
+                  "categoryId"
                 ],
                 "properties": {
                   "name": {
@@ -197,6 +198,11 @@
                   "password": {
                     "type": "string",
                     "example": "sellerpass12"
+                  },
+                  "categoryId": {
+                    "type": "string",
+                    "description": "The single category this shop will sell in. The shop is locked to this category; all its products must belong to it. Get IDs from GET /api/categories.",
+                    "example": "b669a1ea-7d3e-4aa3-a4c8-5523a870237f"
                   }
                 }
               }
@@ -354,7 +360,6 @@
                   "colorId",
                   "size",
                   "stockQuantity",
-                  "categoryId",
                   "brandId",
                   "images"
                 ],
@@ -388,10 +393,16 @@
                     "type": "integer"
                   },
                   "categoryId": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Optional/ignored — the backend forces the product into the seller's shop category. Sending a different category returns 400."
                   },
                   "brandId": {
                     "type": "string"
+                  },
+                  "attributes": {
+                    "type": "string",
+                    "description": "JSON-string of category-specific fields, e.g. {\"condition\":\"New\",\"ram\":\"8GB\",\"storage\":\"256GB\"}. Required fields per category come from GET /api/categories/{id}/attributes.",
+                    "example": "{\"condition\":\"New\",\"ram\":\"8GB\",\"storage\":\"256GB\"}"
                   },
                   "images": {
                     "type": "string",
@@ -852,9 +863,10 @@
         "tags": [
           "Categories"
         ],
+        "description": "Returns categories with subcategories and each category's `attributeFields` (the category-specific product form template).",
         "responses": {
           "200": {
-            "description": "Categories list"
+            "description": "Categories list (each includes attributeFields)"
           }
         }
       },
@@ -889,6 +901,33 @@
         "responses": {
           "201": {
             "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/categories/{id}/attributes": {
+      "get": {
+        "summary": "Get Category Attribute Fields / Майдонҳои махсуси категория",
+        "tags": [
+          "Categories"
+        ],
+        "description": "Returns the category-specific product form fields (key, label, type, options, required) that the seller's Add-Product form should render for this category.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ categoryId, name, attributeFields: [{ key, label, type, options?, unit?, required? }] }"
+          },
+          "404": {
+            "description": "Category not found"
           }
         }
       }

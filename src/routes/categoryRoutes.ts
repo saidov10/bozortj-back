@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getCategories,
+  getCategoryAttributes,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -15,6 +16,7 @@ const router = Router();
 
 // Public / open routes
 router.get('/', getCategories);
+router.get('/:id/attributes', getCategoryAttributes);
 router.get('/:categoryId/subcategories', getSubcategories);
 
 // Seller-only routes (add, edit, delete)

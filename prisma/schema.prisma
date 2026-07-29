@@ -38,15 +38,17 @@ model User {
 }
 
 model ShopProfile {
-  id               String   @id @default(uuid())
-  userId           String   @unique
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shopName         String   @unique
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopName         String    @unique
   description      String
   autoReplyText    String?
-  autoReplyEnabled Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  autoReplyEnabled Boolean   @default(false)
+  categoryId       String?   // The single category this shop is allowed to sell in
+  category         Category? @relation(fields: [categoryId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   products   Product[]
   orderItems OrderItem[]
@@ -59,6 +61,7 @@ model Category {
   name          String        @unique
   subcategories Subcategory[]
   products      Product[]
+  shops         ShopProfile[]
 }
 
 model Subcategory {
@@ -104,6 +107,7 @@ model Product {
   subcategory   Subcategory?   @relation(fields: [subcategoryId], references: [id])
   brandId       String
   brand         Brand          @relation(fields: [brandId], references: [id])
+  attributes    Json?          // Category-specific specifications (key-value), e.g. { "ram": "8GB", "storage": "256GB" }
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 

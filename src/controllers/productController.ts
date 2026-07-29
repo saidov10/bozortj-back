@@ -1,6 +1,23 @@
 import { Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { getAttributeFields } from '../config/categoryAttributes';
+
+// Validate that required category-specific attribute fields are present.
+// Returns an array of missing field labels (empty if all good).
+const findMissingAttributes = (
+  categoryName: string | null | undefined,
+  attributes: Record<string, any> | null
+): string[] => {
+  return getAttributeFields(categoryName)
+    .filter((f) => f.required)
+    .filter((f) => {
+      const v = attributes ? attributes[f.key] : undefined;
+      return v === undefined || v === null || v === '';
+    })
+    .map((f) => f.label);
+};
 
 // 1. Create Product (Seller Only)
 export const createProduct = async (req: AuthRequest, res: Response) => {
@@ -9,16 +26,29 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    // Get seller's shop profile
+    // Get seller's shop profile (with its category)
     const shop = await prisma.shopProfile.findUnique({
-      where: { userId: req.user.id }
+      where: { userId: req.user.id },
+      include: { category: true }
     });
 
     if (!shop) {
       return res.status(403).json({ message: 'Only sellers with a shop profile can create products' });
     }
 
-    const { name, description, price, isOnDiscount, discountPrice, colorId, subcategoryId, size, stockQuantity, categoryId, brandId, variants } = req.body;
+    const { name, description, price, isOnDiscount, discountPrice, colorId, subcategoryId, size, stockQuantity, categoryId, brandId, variants, attributes } = req.body;
+
+    // A shop can ONLY sell within the category it registered with.
+    let effectiveCategoryId = categoryId;
+    if (shop.categoryId) {
+      if (categoryId && categoryId !== shop.categoryId) {
+        return res.status(400).json({ message: `Your shop can only sell products in the "${shop.category?.name}" category` });
+      }
+      effectiveCategoryId = shop.categoryId;
+    }
+    if (!effectiveCategoryId) {
+      return res.status(400).json({ message: 'Category ID is required' });
+    }
 
     // "bez foto ne poluchaetsya dobavit" - Check that files are uploaded
     const files = req.files as Express.Multer.File[];
@@ -27,7 +57,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
     }
 
     // Verify category, brand, and color exist
-    const categoryExists = await prisma.category.findUnique({ where: { id: categoryId } });
+    const categoryExists = await prisma.category.findUnique({ where: { id: effectiveCategoryId } });
     const brandExists = await prisma.brand.findUnique({ where: { id: brandId } });
     const colorExists = await prisma.color.findUnique({ where: { id: colorId } });
 
@@ -43,10 +73,27 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 
     if (subcategoryId) {
       const subcategoryExists = await prisma.subcategory.findFirst({
-        where: { id: subcategoryId, categoryId }
+        where: { id: subcategoryId, categoryId: effectiveCategoryId }
       });
       if (!subcategoryExists) {
         return res.status(400).json({ message: 'Invalid subcategory ID or subcategory does not belong to the selected category' });
+      }
+    }
+
+    // Parse and validate category-specific attributes
+    let parsedAttributes: Record<string, any> | null = null;
+    if (attributes) {
+      try {
+        parsedAttributes = typeof attributes === 'string' ? JSON.parse(attributes) : attributes;
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid attributes JSON format' });
+      }
+    }
+    // Only enforce required fields for shops that have a category (new sellers)
+    if (shop.categoryId) {
+      const missing = findMissingAttributes(shop.category?.name, parsedAttributes);
+      if (missing.length > 0) {
+        return res.status(400).json({ message: `Please fill in the required fields for this category: ${missing.join(', ')}` });
       }
     }
 
@@ -93,8 +140,9 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
           subcategoryId: subcategoryId || null,
           size: finalBaseSize,
           stockQuantity: totalStock,
-          categoryId,
-          brandId
+          categoryId: effectiveCategoryId,
+          brandId,
+          attributes: parsedAttributes ?? undefined
         }
       });
 
@@ -165,11 +213,11 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     }
 
     const { id } = req.params;
-    const { name, description, price, isOnDiscount, discountPrice, colorId, subcategoryId, size, stockQuantity, categoryId, brandId } = req.body;
+    const { name, description, price, isOnDiscount, discountPrice, colorId, subcategoryId, size, stockQuantity, categoryId, brandId, attributes } = req.body;
 
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { shop: true, images: true }
+      include: { shop: { include: { category: true } }, images: true }
     });
 
     if (!product) {
@@ -222,11 +270,29 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
       updateData.colorId = colorId;
     }
 
+    // A shop is locked to its registered category — block moving the product out of it
+    if (categoryId && product.shop.categoryId && categoryId !== product.shop.categoryId) {
+      return res.status(400).json({ message: `Your shop can only sell products in the "${product.shop.category?.name}" category` });
+    }
+
     const finalCategoryId = categoryId || product.categoryId;
     if (categoryId) {
       const categoryExists = await prisma.category.findUnique({ where: { id: categoryId } });
       if (!categoryExists) return res.status(400).json({ message: 'Invalid category ID' });
       updateData.categoryId = categoryId;
+    }
+
+    // Update category-specific attributes if provided (replaces the whole object)
+    if (attributes !== undefined) {
+      if (attributes === '' || attributes === null) {
+        updateData.attributes = Prisma.JsonNull;
+      } else {
+        try {
+          updateData.attributes = typeof attributes === 'string' ? JSON.parse(attributes) : attributes;
+        } catch (e) {
+          return res.status(400).json({ message: 'Invalid attributes JSON format' });
+        }
+      }
     }
 
     if (subcategoryId) {

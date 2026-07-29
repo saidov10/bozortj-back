@@ -17,6 +17,7 @@ export const getShops = async (req: Request, res: Response) => {
     const shops = await prisma.shopProfile.findMany({
       where,
       include: {
+        category: true,
         user: {
           select: {
             name: true,
@@ -42,6 +43,7 @@ export const getShopById = async (req: Request, res: Response) => {
     const shop = await prisma.shopProfile.findUnique({
       where: { id },
       include: {
+        category: true,
         user: {
           select: {
             name: true,

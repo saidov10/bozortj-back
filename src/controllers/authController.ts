@@ -67,7 +67,7 @@ export const registerBuyer = async (req: AuthRequest, res: Response) => {
 // 2. Register Seller (Shop)
 export const registerSeller = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, shopName, description, email, phone, password } = req.body;
+    const { name, shopName, description, email, phone, password, categoryId } = req.body;
 
     // Check if email or phone already exists
     const existingUser = await prisma.user.findFirst({
@@ -87,6 +87,15 @@ export const registerSeller = async (req: AuthRequest, res: Response) => {
 
     if (existingShop) {
       return res.status(400).json({ message: 'Shop name is already taken' });
+    }
+
+    // The seller must pick the single category their shop will sell in
+    if (!categoryId) {
+      return res.status(400).json({ message: 'Please choose the category your shop will sell in' });
+    }
+    const category = await prisma.category.findUnique({ where: { id: categoryId } });
+    if (!category) {
+      return res.status(400).json({ message: 'Invalid category ID' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -109,8 +118,10 @@ export const registerSeller = async (req: AuthRequest, res: Response) => {
         data: {
           userId: user.id,
           shopName,
-          description
-        }
+          description,
+          categoryId
+        },
+        include: { category: true }
       });
 
       return { user, shop };
@@ -131,7 +142,8 @@ export const registerSeller = async (req: AuthRequest, res: Response) => {
         shop: {
           id: result.shop.id,
           shopName: result.shop.shopName,
-          description: result.shop.description
+          description: result.shop.description,
+          category: result.shop.category
         }
       }
     });
@@ -148,7 +160,7 @@ export const login = async (req: AuthRequest, res: Response) => {
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
-        shopProfile: true
+        shopProfile: { include: { category: true } }
       }
     });
 
@@ -176,7 +188,8 @@ export const login = async (req: AuthRequest, res: Response) => {
         shop: user.shopProfile ? {
           id: user.shopProfile.id,
           shopName: user.shopProfile.shopName,
-          description: user.shopProfile.description
+          description: user.shopProfile.description,
+          category: user.shopProfile.category
         } : null
       }
     });
@@ -195,7 +208,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       include: {
-        shopProfile: true
+        shopProfile: { include: { category: true } }
       }
     });
 
@@ -214,7 +227,8 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         shop: user.shopProfile ? {
           id: user.shopProfile.id,
           shopName: user.shopProfile.shopName,
-          description: user.shopProfile.description
+          description: user.shopProfile.description,
+          category: user.shopProfile.category
         } : null
       }
     });
@@ -251,7 +265,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       where: { id: req.user.id },
       data: dataToUpdate,
       include: {
-        shopProfile: true
+        shopProfile: { include: { category: true } }
       }
     });
 
@@ -267,7 +281,8 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         shop: updatedUser.shopProfile ? {
           id: updatedUser.shopProfile.id,
           shopName: updatedUser.shopProfile.shopName,
-          description: updatedUser.shopProfile.description
+          description: updatedUser.shopProfile.description,
+          category: updatedUser.shopProfile.category
         } : null
       }
     });
