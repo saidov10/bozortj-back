@@ -1,6 +1,7 @@
 import http from 'http';
 import app from './app';
 import { initChatSocket } from './services/chatSocket';
+import { startAbandonedCartJob } from './services/abandonedCartJob';
 
 const PORT = process.env.PORT || 5000;
 
@@ -9,6 +10,9 @@ const server = http.createServer(app);
 
 // Initialize Socket.io chat server
 initChatSocket(server);
+
+// Start the abandoned-cart reminder background job
+startAbandonedCartJob();
 
 // Start listening
 server.listen(PORT, () => {

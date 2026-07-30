@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { getAttributeFields } from '../config/categoryAttributes';
+import { summarizeReviews, isAssistantConfigured } from '../services/assistantService';
 
 // Validate that required category-specific attribute fields are present.
 // Returns an array of missing field labels (empty if all good).
@@ -763,5 +764,95 @@ export const replyToReview = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error replying to review', error: error.message });
+  }
+};
+
+// 8. AI Review Summary (Public) — GET /api/products/:id/review-summary
+// Returns a cached AI pros/cons/verdict summary, regenerating it only when the
+// number of reviewed comments has grown since the last summary.
+const MIN_REVIEWS_FOR_SUMMARY = 3;
+
+export const getReviewSummary = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        reviewSummary: true,
+        reviewSummaryAt: true,
+        reviewSummaryCount: true,
+        reviews: {
+          where: { comment: { not: null } },
+          select: { rating: true, comment: true }
+        }
+      }
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const commented = product.reviews
+      .filter((r) => r.comment && r.comment.trim() !== '')
+      .map((r) => ({ rating: r.rating, comment: r.comment as string }));
+
+    if (commented.length < MIN_REVIEWS_FOR_SUMMARY) {
+      return res.status(200).json({
+        available: false,
+        message: 'Not enough reviews to summarize yet',
+        reviewCount: commented.length
+      });
+    }
+
+    // Serve cache if the review count hasn't changed since last summary.
+    if (product.reviewSummary && product.reviewSummaryCount === commented.length) {
+      return res.status(200).json({
+        available: true,
+        summary: product.reviewSummary,
+        basedOnReviews: product.reviewSummaryCount,
+        generatedAt: product.reviewSummaryAt,
+        cached: true
+      });
+    }
+
+    // Need to (re)generate — requires the AI to be configured.
+    if (!isAssistantConfigured()) {
+      if (product.reviewSummary) {
+        return res.status(200).json({
+          available: true,
+          summary: product.reviewSummary,
+          basedOnReviews: product.reviewSummaryCount,
+          generatedAt: product.reviewSummaryAt,
+          cached: true,
+          stale: true
+        });
+      }
+      return res.status(503).json({ message: 'AI assistant is not configured. Set ANTHROPIC_API_KEY on the server.' });
+    }
+
+    const summary = await summarizeReviews(product.name, commented);
+    const generatedAt = new Date();
+
+    await prisma.product.update({
+      where: { id },
+      data: {
+        reviewSummary: summary as any,
+        reviewSummaryAt: generatedAt,
+        reviewSummaryCount: commented.length
+      }
+    });
+
+    return res.status(200).json({
+      available: true,
+      summary,
+      basedOnReviews: commented.length,
+      generatedAt,
+      cached: false
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error summarizing reviews', error: error.message });
   }
 };

@@ -1,153 +1,190 @@
-# 🆕 Промт — ТАНҲО функсияи нав (🤖 Ёрдамчии AI-и харид)
+# 🆕 Промт — ТАНҲО функсияҳои нав (5 фичаи нав)
 
-> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **як функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
+> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **5 функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, `lib/socket.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
 
 Матни зери `---`-ро ба Claude/frontend AI диҳ.
 
 ---
 
-Backend навсозӣ шуд. Як фичаи нав илова шуд: **Ёрдамчии AI-и харид** — фурӯшандаи виртуалӣ, ки бо забони одӣ бо харидор сӯҳбат мекунад, худаш аз базаи маҳсулот мекобад ва вариантҳои мушаххасро бо акс ва нарх пешниҳод мекунад.
+Backend навсозӣ шуд. 5 фичаи нав илова шуд: **(1) Ҷустуҷӯи аксӣ**, **(2) Генератсияи тавсиф бо AI барои фурӯшанда**, **(3) Ёдоварии сабади партофта**, **(4) Флеш-фурӯш бо ҳисобкунаки зинда**, **(5) Хулосаи AI-и тақризҳо**.
 
-## Endpoint-и ягона
-
-```
-POST https://bozortj-back.onrender.com/api/assistant/chat
-Content-Type: application/json
-```
-
-**Аутентификатсия лозим НЕСТ** — ҳам меҳмон, ҳам корбари login-шуда истифода бурда метавонад (токен нафирист).
-
-### Дархост (request body)
-
-```json
-{
-  "message": "телефони арзон то 1500 сомонӣ барои модарам",
-  "history": [
-    { "role": "user", "content": "салом" },
-    { "role": "assistant", "content": "Салом! Чӣ ҷустуҷӯ доред?" }
-  ]
-}
-```
-
-- `message` (ҳатмӣ) — паёми ҷории харидор. Ҳадди аксар 1000 ҳарф.
-- `history` (ихтиёрӣ) — таърихи сӯҳбат барои контекст. **Танҳо `role` ва `content`-ро фирист** (объектҳои маҳсулотро дар history нафирист). Backend танҳо 10 паёми охирро истифода мебарад.
-
-Харидорон метавонанд тоҷикӣ, русӣ ё транслит («krossovka», «кросовки») нависанд — AI мақсадро мефаҳмад.
-
-### Ҷавоб (response 200)
-
-```json
-{
-  "reply": "Ана чанд телефони арзонро барои шумо ёфтам, ҳамааш то 1500 сомонӣ:",
-  "products": [
-    {
-      "id": "uuid",
-      "name": "Redmi A3",
-      "price": 1400,
-      "discountPrice": 1200,
-      "isOnDiscount": true,
-      "effectivePrice": 1200,
-      "brand": "Xiaomi",
-      "category": "Телефонҳо",
-      "image": "1712345678-phone.jpg",
-      "stockQuantity": 8,
-      "shopName": "TechStore"
-    }
-  ]
-}
-```
-
-- `reply` — матни ҷавоби AI (бо ҳамон забони харидор). Инро дар пуфаки чат нишон деҳ.
-- `products` — рӯйхати кортҳои маҳсулот барои рендер кардан (метавонад холӣ бошад).
-  - `image` — танҳо номи файл аст. URL-и пурра: `https://bozortj-back.onrender.com/uploads/{image}`. Агар `image` = `null` бошад, расми placeholder нишон деҳ.
-  - `effectivePrice` — нархе, ки бояд калон нишон дода шавад. Агар `isOnDiscount` = true бошад, нархи кӯҳна (`price`)-ро хатзада ва `discountPrice`-ро сурх нишон деҳ.
-  - `stockQuantity` — агар `0` бошад, «Тамом шуд» нишон деҳ ва тугмаи харидро ғайрифаъол кун.
-
-### Хатоҳо
-
-- `400` — `message` холӣ ё дароз аст.
-- `503` — `{ "message": "AI assistant is not configured..." }` — калиди AI дар сервер ҳоло гузошта нашудааст. Дар ин ҳолат ба корбар мулоим бигӯ: «Ёрдамчии AI ҳоло дастрас нест» ва тугмаро пинҳон/ғайрифаъол кун.
-- `500` — хатои дохилӣ, паёми умумӣ нишон деҳ.
+`BASE = https://bozortj-back.onrender.com`. Расмҳо: `${BASE}/uploads/{image}`. Токен: `Authorization: Bearer <token>` барои endpoint-ҳои фурӯшанда.
 
 ---
 
-## Чӣ бояд созӣ (UI)
+## 1. 📸 Ҷустуҷӯи аксӣ (Visual Search)
 
-### 1. Тугмаи шинокунандаи чат (floating button)
-- Дар кунҷи поёни рости ҳамаи саҳифаҳо як тугмаи мудаввар бо иконаи 🤖 ё чат.
-- Матни хурд: «Ёрдамчии AI» ё «Кӯмак мехоҳед?».
-- Бо клик — равзанаи чат кушода мешавад (modal ё drawer).
+Харидор акс мегирад (масалан молеро дар куҷое дидааст) → AI аксро мебинад, мефаҳмад чист ва монандашро аз база меёбад.
 
-### 2. Равзанаи чат
-- **Ҳошияи паёмҳо:** пуфакҳои корбар (рост) ва AI (чап).
-- Паёми хушомадии аввал аз AI: «Салом! 👋 Ман ёрдамчии хариди шумо ҳастам. Чӣ ҷустуҷӯ доред? Масалан: "куртаи сиёҳ размери M" ё "телефон то 2000 сомонӣ".»
-- **Майдони вуруд** + тугмаи фиристодан. Enter низ мефиристад.
-- Ҳангоми интизории ҷавоб — индикатори «навишта истодааст…» (typing / loader).
+```
+POST ${BASE}/api/assistant/photo        (аутентификатсия лозим НЕСТ)
+```
 
-### 3. Кортҳои маҳсулот дар чат
-- Баъди ҳар паёми AI, агар `products` холӣ набошад, дар зери матн кортҳои маҳсулотро horizontal scroll ё grid нишон деҳ:
-  - расм, ном, нарх (бо тахфиф агар бошад), бренд.
-  - тугмаи **«Дидан»** → корбарро ба саҳифаи ҳамон маҳсулот (`/product/{id}`) мебарад.
-  - ихтиёрӣ: тугмаи **«Ба сабад»** (агар корбар login карда бошад, аз API-и мавҷудаи сабад истифода бар).
+Ду тарзи фиристодан:
+- **multipart/form-data**: майдони `photo` (файли акс, то 8MB) + ихтиёрӣ `note` (матн).
+- ё **JSON**: `{ "imageBase64": "data:image/jpeg;base64,...", "note": "..." }` (ё base64-и хом + `mediaType`).
 
-### 4. Мантиқи фиристодан
-- Ҳангоми фиристодан:
-  1. Паёми корбарро фавран дар чат нишон деҳ.
-  2. Дархостро бо `message` + `history` (таърихи то ин лаҳза, танҳо `role`+`content`) фирист.
-  3. Ҷавобро гир, `reply`-ро ҳамчун паёми AI ва `products`-ро ҳамчун корт нишон деҳ.
-  4. Ҳам паёми корбар ва ҳам паёми AI-ро ба `history`-и локалӣ илова кун, то дархости оянда контекст дошта бошад.
-- Хатоҳоро мулоим коркард кун (масалан 503 → «Ёрдамчии AI ҳоло дастрас нест»).
+Ҷавоб — **ҳамон формати ассистенти чат**:
+```json
+{ "reply": "Ин ба куртаи сиёҳ монанд аст. Ана вариантҳои монанд:", "products": [ ... ] }
+```
+`products` ҳамон сохтори `AssistantProduct` аст (id, name, price, discountPrice, effectivePrice, isOnDiscount, brand, category, image, stockQuantity, shopName).
 
-### Мисоли дархост (fetch)
+**UI:** дар равзанаи ассистент (ё саҳифаи ҷустуҷӯ) тугмаи 📷 «Бо акс ҷустуҷӯ». Корбар аксро интихоб мекунад → loader → ҷавоб ва кортҳои маҳсулотро нишон деҳ (ҳамон компоненти кортҳои ассистент). Хатоҳо: `503` (AI танзим нашуда), `400` (акс нодуруст).
 
+---
+
+## 2. ✍️ Генератсияи тавсиф бо AI (барои фурӯшанда)
+
+Дар формаи иловаи/таҳрири мол тугмаи «✨ Бо AI пур кун» — фурӯшанда танҳо ном (+ихтиёрӣ бренд/категория/калидвожа) медиҳад, AI тавсифи омодаро менависад.
+
+```
+POST ${BASE}/api/assistant/generate-description   (танҳо SELLER, токен лозим)
+Body: { "name": "Redmi A3", "category": "Телефонҳо", "brand": "Xiaomi", "keywords": "128гб, ранги кабуд, батареяи калон" }
+```
+Ҷавоб:
+```json
+{ "description": "Смартфони Redmi A3 бо хотираи 128 ГБ..." }
+```
+
+**UI:** дар назди майдони «Тавсиф» тугмаи «✨ Бо AI пур кун». Ҳангоми клик — loader, баъд натиҷаро ба майдони тавсиф гузор (корбар метавонад таҳрир кунад). Хатоҳо: `503` (AI танзим нашуда — тугмаро пинҳон/ғайрифаъол кун), `400` (ном холӣ).
+
+---
+
+## 3. 🛒 Ёдоварии сабади партофта (Abandoned Cart)
+
+Backend худкор (ҳар соат) агар моле зиёда аз **24 соат** дар сабад бимонад, ба харидор як **огоҳинома** мефиристад. Ин тавассути ҳамон системаи мавҷудаи notification меравад — фронтенд танҳо бояд навъи наверо коркард кунад.
+
+Socket event-и мавҷудаи `new_notification` акнун метавонад `type: 'ABANDONED_CART'` дошта бошад:
 ```ts
-async function askAssistant(
-  message: string,
-  history: { role: 'user' | 'assistant'; content: string }[]
-) {
-  const res = await fetch('https://bozortj-back.onrender.com/api/assistant/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history })
-  });
-  if (res.status === 503) throw new Error('assistant_unavailable');
-  if (!res.ok) throw new Error('assistant_error');
-  return res.json(); // { reply, products }
+socket.on('new_notification', (n) => {
+  // n = { title, content, createdAt, type? }
+  // type метавонад 'NEW_ORDER' | 'ORDER_STATUS' | 'ABANDONED_CART' бошад
+  // ABANDONED_CART-ро мисли огоҳиномаи оддӣ нишон деҳ (тоаст + дар рӯйхати огоҳиномаҳо).
+  // Бо клик → корбарро ба саҳифаи сабад бар.
+});
+```
+**Чизи нав насоз** — танҳо мутмаин шав, ки огоҳиномаҳои `ABANDONED_CART` дар зангӯла/рӯйхати огоҳиномаҳо пайдо мешаванд ва клик ба `/cart` мебарад. (Backend inam ба база сабт мекунад, пас `GET /api/notifications`-и мавҷуда ҳам онро бармегардонад.)
+
+---
+
+## 4. ⚡ Флеш-фурӯш бо ҳисобкунаки зинда (Flash Sale)
+
+Фурӯшанда тахфифи вақтдорро эълон мекунад; дар саҳифаи асосӣ банер бо countdown ва рақами «фурӯхта шуд» ки **зинда** боло меравад.
+
+### Public
+```
+GET ${BASE}/api/flash-sales/active     → { flashSales: [ FlashSale ] }
+GET ${BASE}/api/flash-sales/:id        → { flashSale: FlashSale }
+```
+`FlashSale`:
+```json
+{
+  "id": "uuid",
+  "productId": "uuid",
+  "salePrice": 1200,
+  "originalPrice": 1500,
+  "startsAt": "2026-07-30T10:00:00Z",
+  "endsAt": "2026-07-30T14:00:00Z",
+  "soldCount": 7,
+  "stockLimit": 50,
+  "isActive": true,
+  "isSoldOut": false,
+  "secondsRemaining": 5400,
+  "product": { "id","name","price","image","brand","category","shopName","stockQuantity" }
 }
 ```
+
+### Зинда (Socket) — ҳисобкунаки фурӯш
+Ҳангоми ҳар харид, ба ҳамаи корбарон фиристода мешавад:
+```ts
+socket.on('flash_sale_update', ({ flashSaleId, productId, soldCount, stockLimit }) => {
+  // Рақами "фурӯхта шуд: N"-ро дар банер/корти ҳамон флеш-фурӯш зинда нав кун
+  // (агар stockLimit бошад: "N/stockLimit фурӯхта шуд" ё progress bar).
+});
+```
+Ин пайвасти socket-и мавҷударо истифода мебарад (барои меҳмон ҳам кор мекунад).
+
+### Фурӯшанда (токен лозим, SELLER)
+```
+POST   ${BASE}/api/flash-sales
+  Body: { "productId", "salePrice", "endsAt", "startsAt"?, "stockLimit"? }
+  (salePrice бояд аз нархи мол камтар; endsAt санаи ояндаи воқеӣ бошад)
+GET    ${BASE}/api/flash-sales/mine   → { flashSales: [...] }
+DELETE ${BASE}/api/flash-sales/:id    → бекор кардани флеш-фурӯши худ
+```
+
+**UI:**
+- Дар **саҳифаи асосӣ** секцияи «⚡ Флеш-фурӯш» — кортҳо бо нархи кӯҳна (хатзада) + `salePrice`, countdown аз `secondsRemaining` (таймерро локалӣ ҳар сония кам кун), ва «🔥 {soldCount} фурӯхта шуд». `flash_sale_update`-ро гӯш кун ва зинда нав кун.
+- Дар **панели фурӯшанда** формаи сохтани флеш-фурӯш (интихоби мол + нархи тахфиф + вақти анҷом) ва рӯйхати флеш-фурӯшҳои фаъол бо тугмаи бекоркунӣ.
+- Агар `isSoldOut` ё `secondsRemaining === 0` шавад — «Тамом шуд» нишон деҳ.
+
+---
+
+## 5. ⭐ Хулосаи AI-и тақризҳо (Review Summary)
+
+Дар саҳифаи мол, болои тақризҳо — ҷамъбасти AI: нуктаҳои мусбат, манфӣ ва хулоса.
+
+```
+GET ${BASE}/api/products/:id/review-summary     (public)
+```
+Агар тақризҳои кофӣ (≥3 бо матн) набошад:
+```json
+{ "available": false, "message": "Not enough reviews to summarize yet", "reviewCount": 1 }
+```
+Агар бошад:
+```json
+{
+  "available": true,
+  "summary": { "pros": ["Сифати хуб","Дастрасии тез"], "cons": ["Размераш каme хурд"], "verdict": "Аксари харидорон розӣ ҳастанд." },
+  "basedOnReviews": 12,
+  "generatedAt": "2026-07-30T12:00:00Z",
+  "cached": true
+}
+```
+
+**UI:** дар саҳифаи мол, боло аз рӯйхати тақризҳо як блоки «🤖 Ҷамъбасти тақризҳо»:
+- `verdict` ҳамчун сарлавҳа,
+- `pros` бо ✅, `cons` бо ⚠️.
+- Агар `available: false` — блокро нишон надеҳ.
+- Backend натиҷаро кеш мекунад ва танҳо ҳангоми зиёд шудани тақризҳо аз нав месозад — пас ин занг арзон аст. Хато: `503` (AI танзим нашуда — блокро нишон надеҳ).
+
+---
 
 ## Типҳои TypeScript (илова кун)
 
 ```ts
 type AssistantProduct = {
-  id: string;
-  name: string;
-  price: number;
-  discountPrice: number | null;
-  isOnDiscount: boolean;
-  effectivePrice: number;
-  brand: string | null;
-  category: string | null;
-  image: string | null;
-  stockQuantity: number;
-  shopName: string | null;
+  id: string; name: string; price: number; discountPrice: number | null;
+  isOnDiscount: boolean; effectivePrice: number; brand: string | null;
+  category: string | null; image: string | null; stockQuantity: number; shopName: string | null;
 };
-
 type AssistantReply = { reply: string; products: AssistantProduct[] };
-type AssistantMessage = { role: 'user' | 'assistant'; content: string };
+
+type FlashSale = {
+  id: string; productId: string; salePrice: number; originalPrice: number | null;
+  startsAt: string; endsAt: string; soldCount: number; stockLimit: number | null;
+  isActive: boolean; isSoldOut: boolean; secondsRemaining: number;
+  product: { id: string; name: string; price: number; image: string | null;
+    brand: string | null; category: string | null; shopName: string | null; stockQuantity: number } | null;
+};
+type FlashSaleUpdate = { flashSaleId: string; productId: string; soldCount: number; stockLimit: number | null };
+
+type ReviewSummary = { pros: string[]; cons: string[]; verdict: string };
+type ReviewSummaryResponse =
+  | { available: false; message: string; reviewCount: number }
+  | { available: true; summary: ReviewSummary; basedOnReviews: number; generatedAt: string; cached: boolean };
 ```
 
-Дизайн бояд ба стили умумии сайт (рангҳо, шрифт, кунҷҳо) мувофиқ бошад. Чат бояд дар мобилӣ низ хуб кор кунад (responsive, full-screen дар экрани хурд).
+Дизайн ба стили умумии сайт мувофиқ бошад ва дар мобилӣ хуб кор кунад.
 
 ---
 
 ## ⚙️ Ёддошт барои backend deploy (муҳим)
-Ин фича як калиди API-и Anthropic-ро талаб мекунад. Дар **Render → Environment** тағйирёбандаи муҳитро илова кун:
-
+Фичаҳои AI (ҷустуҷӯи аксӣ, генератсияи тавсиф, хулосаи тақриз) калиди Anthropic мехоҳанд. Дар **Render → Environment** илова кун:
 ```
 ANTHROPIC_API_KEY = sk-ant-...
 ```
+Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `claude-opus-4-8`; барои арзонтар `claude-haiku-4-5`). То гузоштани калид, ин 3 endpoint `503` бармегардонанд — сайт вайрон намешавад. Флеш-фурӯш ва ёдоварии сабад бе AI кор мекунанд.
 
-Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `claude-opus-4-8`). Барои арзонтар/тезтар кардан метавон ба `claude-haiku-4-5` иваз кард.
-
-Push ба `main` кофист — Render худкор деплой мекунад ва `prisma generate`-ро иҷро мекунад. Ҳеҷ тағйироти база лозим нест.
+Push ба `main` кофист — Render худкор `prisma db push`-ро иҷро мекунад, пас майдонҳо/ҷадвалҳои нав (FlashSale, `abandonedNotified`, кеши хулосаи тақриз) худкор татбиқ мешаванд. Ёдоварии сабад дар free tier-и Render (хоб пас аз ~15 дақиқа) best-effort аст — пас аз бедор шудани сервер кор мекунад.

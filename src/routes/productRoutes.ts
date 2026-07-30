@@ -6,6 +6,7 @@ import {
   getProducts,
   getProductById,
   getProductRecommendations,
+  getReviewSummary,
   addReview,
   replyToReview
 } from '../controllers/productController';
@@ -19,6 +20,7 @@ const router = Router();
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 router.get('/:id/recommendations', getProductRecommendations);
+router.get('/:id/review-summary', getReviewSummary);
 
 // Seller only routes
 router.post(

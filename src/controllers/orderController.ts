@@ -2,7 +2,7 @@ import { Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createNotification } from '../services/notificationService';
-import { broadcastStockUpdate, broadcastOrderStatus } from '../services/chatSocket';
+import { broadcastStockUpdate, broadcastOrderStatus, broadcastFlashSaleUpdate } from '../services/chatSocket';
 
 // 1. Create Order (Checkout Cart)
 export const createOrder = async (req: AuthRequest, res: Response) => {
@@ -250,6 +250,36 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         productStockQuantity: item.variant.product.stockQuantity - item.quantity
       });
     });
+
+    // Flash sale: bump the live "sold" counter for any active sale on the
+    // bought products (best-effort, outside the critical path).
+    try {
+      const qtyByProduct: Record<string, number> = {};
+      cartItems.forEach((item) => {
+        qtyByProduct[item.variant.productId] =
+          (qtyByProduct[item.variant.productId] || 0) + item.quantity;
+      });
+      const now = new Date();
+      for (const [productId, qty] of Object.entries(qtyByProduct)) {
+        const sale = await prisma.flashSale.findFirst({
+          where: { productId, startsAt: { lte: now }, endsAt: { gt: now } }
+        });
+        if (sale) {
+          const updated = await prisma.flashSale.update({
+            where: { id: sale.id },
+            data: { soldCount: { increment: qty } }
+          });
+          broadcastFlashSaleUpdate({
+            flashSaleId: updated.id,
+            productId,
+            soldCount: updated.soldCount,
+            stockLimit: updated.stockLimit
+          });
+        }
+      }
+    } catch (fsErr) {
+      console.error('Flash sale counter update failed:', fsErr);
+    }
 
     return res.status(201).json({
       message: 'Order created successfully',

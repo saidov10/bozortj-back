@@ -241,3 +241,16 @@ export const broadcastOrderStatus = (
     ioInstance.to(userId).emit('order_status_changed', data);
   }
 };
+
+// Live flash-sale "sold count" broadcast to everyone (homepage banner, product
+// page) so the urgency counter ticks up in real time as others buy.
+export const broadcastFlashSaleUpdate = (data: {
+  flashSaleId: string;
+  productId: string;
+  soldCount: number;
+  stockLimit: number | null;
+}) => {
+  if (ioInstance) {
+    ioInstance.emit('flash_sale_update', data);
+  }
+};

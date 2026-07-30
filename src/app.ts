@@ -21,6 +21,7 @@ import adminRoutes from './routes/adminRoutes';
 import addressRoutes from './routes/addressRoutes';
 import refundRoutes from './routes/refundRoutes';
 import assistantRoutes from './routes/assistantRoutes';
+import flashSaleRoutes from './routes/flashSaleRoutes';
 
 
 
@@ -56,6 +57,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/flash-sales', flashSaleRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

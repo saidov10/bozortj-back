@@ -193,8 +193,8 @@ export interface AssistantResult {
 // Drives the agentic loop: the model calls search/detail tools until it has an
 // answer, and we collect every product it surfaced so the frontend can render
 // rich cards alongside the text reply.
-export const chatWithAssistant = async (
-  message: string,
+const runAssistantLoop = async (
+  userContent: string | Anthropic.ContentBlockParam[],
   history: ChatMessage[] = []
 ): Promise<AssistantResult> => {
   const collected = new Map<string, ProductCard>();
@@ -204,7 +204,7 @@ export const chatWithAssistant = async (
       .filter((m) => m && typeof m.content === 'string' && m.content.trim() !== '')
       .slice(-10)
       .map((m) => ({ role: m.role, content: m.content } as Anthropic.MessageParam)),
-    { role: 'user', content: message }
+    { role: 'user', content: userContent }
   ];
 
   let reply = '';
@@ -287,4 +287,115 @@ export const chatWithAssistant = async (
   }
 
   return { reply, products: Array.from(collected.values()) };
+};
+
+// Text chat entry point.
+export const chatWithAssistant = (message: string, history: ChatMessage[] = []): Promise<AssistantResult> =>
+  runAssistantLoop(message, history);
+
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+// 📸 Visual search: the buyer sends a photo; the assistant sees it, works out
+// what the product is, then searches the catalogue for matches.
+export const chatWithAssistantPhoto = (
+  imageBase64: string,
+  mediaType: ImageMediaType,
+  note?: string,
+  history: ChatMessage[] = []
+): Promise<AssistantResult> => {
+  const instruction = note && note.trim()
+    ? `Харидор ин аксро фиристод ва навишт: "${note.trim()}". Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо асбоби search_products монанди онро дар база ёб ва пешниҳод кун.`
+    : 'Харидор ин аксро фиристод. Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо асбоби search_products монанди онро дар база ёб ва пешниҳод кун.';
+
+  const content: Anthropic.ContentBlockParam[] = [
+    { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+    { type: 'text', text: instruction }
+  ];
+  return runAssistantLoop(content, history);
+};
+
+// ✍️ AI writes a product description for a seller from a few basic fields.
+export const generateProductDescription = async (input: {
+  name: string;
+  category?: string;
+  brand?: string;
+  keywords?: string;
+}): Promise<{ description: string }> => {
+  const parts = [`Ном: ${input.name}`];
+  if (input.category) parts.push(`Категория: ${input.category}`);
+  if (input.brand) parts.push(`Бренд: ${input.brand}`);
+  if (input.keywords) parts.push(`Калидвожаҳо/шарҳи кӯтоҳи фурӯшанда: ${input.keywords}`);
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    output_config: { effort: 'low' },
+    system:
+      'Ту копирайтери e-commerce ҳастӣ. Барои маҳсулоти зерин як тавсифи ҷолиб, дақиқ ва фурӯшандаи 2-4 ҷумлаӣ бо забони тоҷикӣ навис. Танҳо матни тавсифро баргардон — бе сарлавҳа, бе рӯйхат, бе эмодзӣ. Хусусиятҳои асосиро зикр кун ва харидорро ба харид ташвиқ кун. Аз даъвоҳои бардурӯғ худдорӣ кун.',
+    messages: [{ role: 'user', content: parts.join('\n') }]
+  });
+
+  if (response.stop_reason === 'refusal') return { description: '' };
+
+  const description = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join(' ')
+    .trim();
+
+  return { description };
+};
+
+export interface ReviewSummary {
+  pros: string[];
+  cons: string[];
+  verdict: string;
+}
+
+const REVIEW_SUMMARY_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    pros: { type: 'array', items: { type: 'string' } },
+    cons: { type: 'array', items: { type: 'string' } },
+    verdict: { type: 'string' }
+  },
+  required: ['pros', 'cons', 'verdict'],
+  additionalProperties: false
+};
+
+// ⭐ AI condenses many reviews into pros / cons / a one-line verdict.
+export const summarizeReviews = async (
+  productName: string,
+  reviews: { rating: number; comment: string }[]
+): Promise<ReviewSummary> => {
+  const reviewsText = reviews
+    .map((r, i) => `Тақризи ${i + 1} (${r.rating}/5): ${r.comment}`)
+    .join('\n');
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: REVIEW_SUMMARY_SCHEMA } },
+    system: `Ту тақризҳои харидоронро оид ба маҳсулоти "${productName}" таҳлил мекунӣ. Нуктаҳои асосии мусбат (pros) ва манфиро (cons) бо забони тоҷикӣ, кӯтоҳ ва дақиқ ҷамъбаст кун — ҳар нукта 3-6 калима. "verdict" як ҷумлаи хулосавӣ бошад. Танҳо аз рӯи худи тақризҳо навис, чизе аз худ илова накун.`,
+    messages: [{ role: 'user', content: reviewsText }]
+  });
+
+  if (response.stop_reason === 'refusal') return { pros: [], cons: [], verdict: '' };
+
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
+
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      pros: Array.isArray(parsed.pros) ? parsed.pros : [],
+      cons: Array.isArray(parsed.cons) ? parsed.cons : [],
+      verdict: typeof parsed.verdict === 'string' ? parsed.verdict : ''
+    };
+  } catch {
+    return { pros: [], cons: [], verdict: text.slice(0, 200) };
+  }
 };
