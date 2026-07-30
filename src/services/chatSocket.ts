@@ -21,12 +21,15 @@ export const initChatSocket = (server: any) => {
 
   ioInstance = io;
 
-  // Socket authentication middleware
+  // Socket authentication middleware.
+  // Token is required for chat/notifications, but anonymous visitors are still
+  // allowed to connect so public real-time features (live viewer count, live
+  // stock) work for shoppers who are not logged in.
   io.use((socket: AuthenticatedSocket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
 
     if (!token) {
-      return next(new Error('Authentication error: Token required'));
+      return next();
     }
 
     try {
@@ -34,12 +37,48 @@ export const initChatSocket = (server: any) => {
       socket.user = decoded;
       next();
     } catch (err) {
-      return next(new Error('Authentication error: Invalid token'));
+      // Invalid token: still let them connect as an anonymous visitor
+      next();
     }
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    if (!socket.user) return;
+    // Track which product rooms this socket is viewing, so we can broadcast
+    // an updated viewer count to everyone else when it disconnects.
+    const viewedProducts = new Set<string>();
+
+    const productRoom = (productId: string) => `product:${productId}`;
+
+    const broadcastViewerCount = (productId: string) => {
+      const room = productRoom(productId);
+      const count = io.sockets.adapter.rooms.get(room)?.size || 0;
+      io.to(room).emit('viewer_count', { productId, count });
+    };
+
+    // ---- Public: live "N people viewing this" on a product page ----
+    socket.on('view_product', (productId: string) => {
+      if (!productId) return;
+      socket.join(productRoom(productId));
+      viewedProducts.add(productId);
+      broadcastViewerCount(productId);
+    });
+
+    socket.on('leave_product', (productId: string) => {
+      if (!productId) return;
+      socket.leave(productRoom(productId));
+      viewedProducts.delete(productId);
+      broadcastViewerCount(productId);
+    });
+
+    if (!socket.user) {
+      socket.on('disconnect', () => {
+        viewedProducts.forEach((productId) => {
+          socket.leave(productRoom(productId));
+          broadcastViewerCount(productId);
+        });
+      });
+      return;
+    }
 
     const userId = socket.user.id;
     console.log(`User connected to Chat WebSocket: ${socket.user.name} (${userId})`);
@@ -152,18 +191,53 @@ export const initChatSocket = (server: any) => {
     socket.on('disconnect', () => {
       console.log(`User disconnected from Chat WebSocket: ${socket.user?.name} (${userId})`);
       socket.leave(userId);
+      viewedProducts.forEach((productId) => {
+        socket.leave(productRoom(productId));
+        broadcastViewerCount(productId);
+      });
     });
   });
 
   return io;
 };
 
-export const sendLiveNotification = (userId: string, title: string, content: string) => {
+export const sendLiveNotification = (
+  userId: string,
+  title: string,
+  content: string,
+  meta?: Record<string, any>
+) => {
   if (ioInstance) {
     ioInstance.to(userId).emit('new_notification', {
       title,
       content,
-      createdAt: new Date()
+      createdAt: new Date(),
+      ...meta
     });
+  }
+};
+
+// Live stock update, broadcast to everyone currently viewing a product page
+// (e.g. right after checkout decrements stock) so the "Faqat N to monad!"
+// urgency indicator updates without a page refresh.
+export const broadcastStockUpdate = (
+  productId: string,
+  data: { variantId: string; stockQuantity: number; productStockQuantity: number }
+) => {
+  if (ioInstance) {
+    ioInstance.to(`product:${productId}`).emit('stock_update', {
+      productId,
+      ...data
+    });
+  }
+};
+
+// Live order status push for the buyer's order-tracking timeline page
+export const broadcastOrderStatus = (
+  userId: string,
+  data: { orderId: string; status: string; note?: string | null }
+) => {
+  if (ioInstance) {
+    ioInstance.to(userId).emit('order_status_changed', data);
   }
 };

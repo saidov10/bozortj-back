@@ -2,6 +2,7 @@ import { Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createNotification } from '../services/notificationService';
+import { broadcastStockUpdate, broadcastOrderStatus } from '../services/chatSocket';
 
 // 1. Create Order (Checkout Cart)
 export const createOrder = async (req: AuthRequest, res: Response) => {
@@ -234,10 +235,21 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         await createNotification(
           shopProfile.userId,
           'New Order Received',
-          `You received a new order for items in your shop "${shopProfile.shopName}".`
+          `You received a new order for items in your shop "${shopProfile.shopName}".`,
+          { type: 'NEW_ORDER', orderId: order?.id }
         );
       }
     }
+
+    // Live stock broadcast: anyone currently viewing these products sees the
+    // "Faqat N to monad!" counter update in real time, no refresh needed.
+    cartItems.forEach((item) => {
+      broadcastStockUpdate(item.variant.productId, {
+        variantId: item.variantId,
+        stockQuantity: item.variant.stockQuantity - item.quantity,
+        productStockQuantity: item.variant.product.stockQuantity - item.quantity
+      });
+    });
 
     return res.status(201).json({
       message: 'Order created successfully',
@@ -446,8 +458,12 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     await createNotification(
       order.userId,
       'Order Status Updated',
-      `Your order #${order.id.substring(0, 8)} status is now: ${status}`
+      `Your order #${order.id.substring(0, 8)} status is now: ${status}`,
+      { type: 'ORDER_STATUS', orderId: order.id, status }
     );
+
+    // Live-update the buyer's order-tracking timeline page, no refresh needed
+    broadcastOrderStatus(order.userId, { orderId: order.id, status, note: note || null });
 
     return res.status(200).json({
       message: 'Order status updated successfully',
