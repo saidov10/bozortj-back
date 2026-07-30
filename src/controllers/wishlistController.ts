@@ -15,10 +15,22 @@ export const getWishlist = async (req: AuthRequest, res: Response) => {
         product: {
           include: {
             images: true,
+            category: true,
+            subcategory: true,
+            brand: true,
+            color: true,
+            variants: {
+              include: { color: true }
+            },
             shop: {
               select: {
                 id: true,
                 shopName: true
+              }
+            },
+            reviews: {
+              select: {
+                rating: true
               }
             }
           }
@@ -26,7 +38,26 @@ export const getWishlist = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    return res.status(200).json({ wishlistItems });
+    const wishlist = wishlistItems.map((item) => {
+      const reviewCount = item.product.reviews.length;
+      const averageRating =
+        reviewCount > 0
+          ? item.product.reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+          : 0;
+
+      const { reviews, ...productData } = item.product;
+
+      return {
+        id: item.id,
+        product: {
+          ...productData,
+          averageRating,
+          reviewCount
+        }
+      };
+    });
+
+    return res.status(200).json({ wishlist });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving wishlist', error: error.message });
   }
