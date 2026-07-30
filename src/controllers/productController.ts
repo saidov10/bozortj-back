@@ -830,7 +830,7 @@ export const getReviewSummary = async (req: AuthRequest, res: Response) => {
           stale: true
         });
       }
-      return res.status(503).json({ message: 'AI assistant is not configured. Set ANTHROPIC_API_KEY on the server.' });
+      return res.status(503).json({ message: 'AI assistant is not configured. Set GEMINI_API_KEY on the server.' });
     }
 
     const summary = await summarizeReviews(product.name, commented);

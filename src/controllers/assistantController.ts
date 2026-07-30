@@ -9,7 +9,7 @@ import {
 } from '../services/assistantService';
 
 const notConfigured = (res: Response) =>
-  res.status(503).json({ message: 'AI assistant is not configured. Set ANTHROPIC_API_KEY on the server.' });
+  res.status(503).json({ message: 'AI assistant is not configured. Set GEMINI_API_KEY on the server.' });
 
 const ALLOWED_MEDIA: ImageMediaType[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 

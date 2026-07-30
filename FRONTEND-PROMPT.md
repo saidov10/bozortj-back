@@ -181,10 +181,10 @@ type ReviewSummaryResponse =
 ---
 
 ## ⚙️ Ёддошт барои backend deploy (муҳим)
-Фичаҳои AI (ҷустуҷӯи аксӣ, генератсияи тавсиф, хулосаи тақриз) калиди Anthropic мехоҳанд. Дар **Render → Environment** илова кун:
+Фичаҳои AI (ҷустуҷӯи аксӣ, генератсияи тавсиф, хулосаи тақриз) калиди **Google Gemini** мехоҳанд (сатҳи ройгон дорад — калидро аз [aistudio.google.com](https://aistudio.google.com) гир). Дар **Render → Environment** илова кун:
 ```
-ANTHROPIC_API_KEY = sk-ant-...
+GEMINI_API_KEY = ...
 ```
-Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `claude-opus-4-8`; барои арзонтар `claude-haiku-4-5`). То гузоштани калид, ин 3 endpoint `503` бармегардонанд — сайт вайрон намешавад. Флеш-фурӯш ва ёдоварии сабад бе AI кор мекунанд.
+Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `gemini-2.0-flash`). То гузоштани калид, ин 3 endpoint `503` бармегардонанд — сайт вайрон намешавад. Флеш-фурӯш ва ёдоварии сабад бе AI кор мекунанд.
 
 Push ба `main` кофист — Render худкор `prisma db push`-ро иҷро мекунад, пас майдонҳо/ҷадвалҳои нав (FlashSale, `abandonedNotified`, кеши хулосаи тақриз) худкор татбиқ мешаванд. Ёдоварии сабад дар free tier-и Render (хоб пас аз ~15 дақиқа) best-effort аст — пас аз бедор шудани сервер кор мекунад.

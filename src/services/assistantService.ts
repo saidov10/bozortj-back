@@ -1,18 +1,29 @@
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  GoogleGenerativeAI,
+  SchemaType,
+  type Content,
+  type Part,
+  type FunctionDeclaration
+} from '@google/generative-ai';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 
 // AI Shopping Assistant ("Yordamchii AI") — a virtual seller that reads the
 // buyer's request in plain language (Tajik / Russian / transliteration),
-// searches the real product catalogue via tool use, and recommends concrete
-// products with prices in Somoni.
+// searches the real product catalogue via function calling, and recommends
+// concrete products with prices in Somoni. Powered by Google Gemini (free tier).
 
-const MODEL = process.env.ASSISTANT_MODEL || 'claude-opus-4-8';
+const MODEL = process.env.ASSISTANT_MODEL || 'gemini-2.0-flash';
 
-// A single shared client. The SDK reads ANTHROPIC_API_KEY from the environment.
-const anthropic = new Anthropic();
+// Lazily-constructed client so importing this module never crashes when the
+// key is missing (all endpoints gate on isAssistantConfigured first).
+let _client: GoogleGenerativeAI | null = null;
+const getClient = (): GoogleGenerativeAI => {
+  if (!_client) _client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+  return _client;
+};
 
-export const isAssistantConfigured = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY);
+export const isAssistantConfigured = (): boolean => Boolean(process.env.GEMINI_API_KEY);
 
 // The shape of a product card we return to the frontend to render.
 export interface ProductCard {
@@ -34,6 +45,8 @@ interface ChatMessage {
   content: string;
 }
 
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
 const SYSTEM_PROMPT = `Ту "Ёрдамчии Bozor TJ" ҳастӣ — фурӯшандаи виртуалии як бозори онлайни Тоҷикистон.
 
 Вазифаи ту: ба харидор кӯмак кунӣ, ки маҳсулоти мувофиқро зуд ёбад.
@@ -41,29 +54,28 @@ const SYSTEM_PROMPT = `Ту "Ёрдамчии Bozor TJ" ҳастӣ — фурӯ�
 Қоидаҳо:
 - Бо ҳамон забоне ҷавоб деҳ, ки харидор навиштааст (тоҷикӣ, русӣ ё транслит). Пешфарз — тоҷикӣ.
 - Харидорон аксар вақт омехта ва транслит менависанд (масалан "krossovka", "кросовки", "пойафзоли варзишӣ" — ҳамааш як чиз). Мақсади харидорро фаҳм ва калимаи дурустро барои ҷустуҷӯ истифода бар.
-- Барои ёфтани маҳсулот ҲАТМАН асбоби "search_products"-ро истифода бар. Ҳеҷ гоҳ маҳсулотро аз худ насоз — танҳо аз натиҷаи ҷустуҷӯ пешниҳод кун.
+- Барои ёфтани маҳсулот ҲАТМАН функсияи "search_products"-ро истифода бар. Ҳеҷ гоҳ маҳсулотро аз худ насоз — танҳо аз натиҷаи ҷустуҷӯ пешниҳод кун.
 - Агар бо як калима чизе наёфтӣ, бо калимаи дигар ё муродиф боз ҷустуҷӯ кун.
 - Нархҳо бо сомонӣ. Агар маҳсулот тахфиф дошта бошад, нархи тахфифро зикр кун.
 - Ҷавоб кӯтоҳ, дӯстона ва фоиданок бошад. 3-4 варианти беҳтаринро пешниҳод кун ва бипурс, ки кадомаш маъқул шуд.
 - Агар ҳеҷ маҳсулоти мувофиқ набошад, ростқавлона бигӯ ва пешниҳод кун, ки харидор калимаи дигарро санҷад.
 - Дар матни ҷавобат рӯйхати дарози маҳсулотро такрор накун — корти маҳсулот ба таври алоҳида нишон дода мешавад. Танҳо кӯтоҳ шарҳ деҳ, ки чаро инҳоро пешниҳод кардӣ.`;
 
-const tools: Anthropic.Tool[] = [
+const functionDeclarations: FunctionDeclaration[] = [
   {
     name: 'search_products',
     description:
       "Маҳсулотро дар базаи бозор ҷустуҷӯ мекунад. Аз рӯи ном, тавсиф, бренд, категория ва ранг мувофиқат меёбад. Барои ҳар дархости харидор истифода бар. Метавонӣ бо нархи ҳадди ақал/аксар ва категория маҳдуд кунӣ.",
-    input_schema: {
-      type: 'object',
+    parameters: {
+      type: SchemaType.OBJECT,
       properties: {
         query: {
-          type: 'string',
-          description:
-            'Калима ё калимаҳои ҷустуҷӯ (ном, навъ ё бренди маҳсулот). Метавонад холӣ бошад, агар танҳо аз рӯи нарх/категория филтр карда шавад.'
+          type: SchemaType.STRING,
+          description: 'Калима ё калимаҳои ҷустуҷӯ (ном, навъ ё бренди маҳсулот).'
         },
-        maxPrice: { type: 'number', description: 'Нархи ҳадди аксар бо сомонӣ (ихтиёрӣ).' },
-        minPrice: { type: 'number', description: 'Нархи ҳадди ақал бо сомонӣ (ихтиёрӣ).' },
-        category: { type: 'string', description: 'Номи категория барои маҳдуд кардан (ихтиёрӣ).' }
+        maxPrice: { type: SchemaType.NUMBER, description: 'Нархи ҳадди аксар бо сомонӣ (ихтиёрӣ).' },
+        minPrice: { type: SchemaType.NUMBER, description: 'Нархи ҳадди ақал бо сомонӣ (ихтиёрӣ).' },
+        category: { type: SchemaType.STRING, description: 'Номи категория барои маҳдуд кардан (ихтиёрӣ).' }
       },
       required: ['query']
     }
@@ -71,11 +83,11 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'get_product_details',
     description:
-      'Маълумоти пурраи як маҳсулотро аз рӯи ID бармегардонад (тавсиф, вариантҳо, андозаҳо, рангҳо, захира).',
-    input_schema: {
-      type: 'object',
+      'Маълумоти пурраи як маҳсулотро аз рӯи ID бармегардонад (тавсиф, андоза, ранг, захира).',
+    parameters: {
+      type: SchemaType.OBJECT,
       properties: {
-        productId: { type: 'string', description: 'ID-и маҳсулот.' }
+        productId: { type: SchemaType.STRING, description: 'ID-и маҳсулот.' }
       },
       required: ['productId']
     }
@@ -146,7 +158,6 @@ const runSearchProducts = async (input: {
   const andConditions: Prisma.ProductWhereInput[] = [];
 
   if (wordConditions.length > 0) {
-    // Match any of the query words (broad recall — the model narrows down).
     andConditions.push({ OR: wordConditions.flatMap((c) => c.OR!) });
   }
   if (input.category) {
@@ -161,15 +172,15 @@ const runSearchProducts = async (input: {
     orderBy: [{ isOnDiscount: 'desc' }, { createdAt: 'desc' }]
   });
 
-  // In-stock first
   return products.sort((a, b) => (b.stockQuantity > 0 ? 1 : 0) - (a.stockQuantity > 0 ? 1 : 0));
 };
 
 const runGetProductDetails = async (productId: string): Promise<ProductWithRelations | null> => {
+  if (!productId) return null;
   return prisma.product.findUnique({ where: { id: productId }, include: productInclude });
 };
 
-// Compact JSON we hand back to the model as a tool_result (keeps token use low).
+// Compact JSON we hand back to the model as a function result (keeps tokens low).
 const cardForModel = (p: ProductWithRelations) => ({
   id: p.id,
   name: p.name,
@@ -190,94 +201,88 @@ export interface AssistantResult {
   products: ProductCard[];
 }
 
-// Drives the agentic loop: the model calls search/detail tools until it has an
-// answer, and we collect every product it surfaced so the frontend can render
-// rich cards alongside the text reply.
+// Convert stored chat history to Gemini's Content[] format. Gemini requires the
+// first turn to be 'user' and the history not to end on an unanswered 'user'.
+const toGeminiHistory = (history: ChatMessage[]): Content[] => {
+  const items: Content[] = history
+    .filter((m) => m && typeof m.content === 'string' && m.content.trim() !== '')
+    .slice(-10)
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
+  while (items.length && items[0].role !== 'user') items.shift();
+  if (items.length && items[items.length - 1].role === 'user') items.pop();
+  return items;
+};
+
+const safeText = (response: { text: () => string }): string => {
+  try {
+    return (response.text() || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+// Execute a function the model asked for; returns a plain object result.
+const runToolCall = async (
+  name: string,
+  args: any,
+  collected: Map<string, ProductCard>
+): Promise<object> => {
+  try {
+    if (name === 'search_products') {
+      const found = await runSearchProducts(args || {});
+      found.forEach((p) => collected.set(p.id, toCard(p)));
+      return { count: found.length, products: found.map(cardForModel) };
+    }
+    if (name === 'get_product_details') {
+      const p = await runGetProductDetails(args?.productId);
+      if (p) collected.set(p.id, toCard(p));
+      return p ? cardForModel(p) : { error: 'not_found' };
+    }
+    return { error: 'unknown_tool' };
+  } catch (err: any) {
+    return { error: err?.message || 'tool_failed' };
+  }
+};
+
+// Drives the function-calling loop: the model calls search/detail functions
+// until it has an answer, and we collect every product it surfaced so the
+// frontend can render rich cards alongside the text reply.
 const runAssistantLoop = async (
-  userContent: string | Anthropic.ContentBlockParam[],
+  userContent: string | Part[],
   history: ChatMessage[] = []
 ): Promise<AssistantResult> => {
   const collected = new Map<string, ProductCard>();
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history
-      .filter((m) => m && typeof m.content === 'string' && m.content.trim() !== '')
-      .slice(-10)
-      .map((m) => ({ role: m.role, content: m.content } as Anthropic.MessageParam)),
-    { role: 'user', content: userContent }
-  ];
+  const model = getClient().getGenerativeModel({
+    model: MODEL,
+    systemInstruction: SYSTEM_PROMPT,
+    tools: [{ functionDeclarations }],
+    generationConfig: { maxOutputTokens: 2048 }
+  });
+
+  const chat = model.startChat({ history: toGeminiHistory(history) });
 
   let reply = '';
+  let result = await chat.sendMessage(userContent as string | Array<string | Part>);
 
   for (let step = 0; step < 6; step++) {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 2048,
-      output_config: { effort: 'low' },
-      system: SYSTEM_PROMPT,
-      tools,
-      messages
-    });
-
-    if (response.stop_reason === 'refusal') {
-      return {
-        reply: 'Бубахшед, ба ин дархост ҷавоб дода наметавонам. Метавонед чизи дигарро пурсед.',
-        products: []
-      };
-    }
-
-    if (response.stop_reason !== 'tool_use') {
-      reply = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim();
+    const calls = result.response.functionCalls();
+    if (!calls || calls.length === 0) {
+      reply = safeText(result.response);
       break;
     }
 
-    messages.push({ role: 'assistant', content: response.content });
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of response.content) {
-      if (block.type !== 'tool_use') continue;
-
-      try {
-        if (block.name === 'search_products') {
-          const found = await runSearchProducts(block.input as any);
-          found.forEach((p) => collected.set(p.id, toCard(p)));
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify({ count: found.length, products: found.map(cardForModel) })
-          });
-        } else if (block.name === 'get_product_details') {
-          const { productId } = block.input as { productId: string };
-          const p = await runGetProductDetails(productId);
-          if (p) collected.set(p.id, toCard(p));
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: p ? JSON.stringify(cardForModel(p)) : JSON.stringify({ error: 'not_found' })
-          });
-        } else {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify({ error: 'unknown_tool' }),
-            is_error: true
-          });
-        }
-      } catch (err: any) {
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: JSON.stringify({ error: err?.message || 'tool_failed' }),
-          is_error: true
-        });
-      }
+    const responseParts: Part[] = [];
+    for (const call of calls) {
+      const out = await runToolCall(call.name, call.args, collected);
+      responseParts.push({ functionResponse: { name: call.name, response: out } });
     }
 
-    messages.push({ role: 'user', content: toolResults });
+    result = await chat.sendMessage(responseParts);
   }
 
   if (!reply) {
@@ -293,8 +298,6 @@ const runAssistantLoop = async (
 export const chatWithAssistant = (message: string, history: ChatMessage[] = []): Promise<AssistantResult> =>
   runAssistantLoop(message, history);
 
-export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-
 // 📸 Visual search: the buyer sends a photo; the assistant sees it, works out
 // what the product is, then searches the catalogue for matches.
 export const chatWithAssistantPhoto = (
@@ -304,14 +307,14 @@ export const chatWithAssistantPhoto = (
   history: ChatMessage[] = []
 ): Promise<AssistantResult> => {
   const instruction = note && note.trim()
-    ? `Харидор ин аксро фиристод ва навишт: "${note.trim()}". Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо асбоби search_products монанди онро дар база ёб ва пешниҳод кун.`
-    : 'Харидор ин аксро фиристод. Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо асбоби search_products монанди онро дар база ёб ва пешниҳод кун.';
+    ? `Харидор ин аксро фиристод ва навишт: "${note.trim()}". Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо функсияи search_products монанди онро дар база ёб ва пешниҳод кун.`
+    : 'Харидор ин аксро фиристод. Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо функсияи search_products монанди онро дар база ёб ва пешниҳод кун.';
 
-  const content: Anthropic.ContentBlockParam[] = [
-    { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-    { type: 'text', text: instruction }
+  const parts: Part[] = [
+    { inlineData: { data: imageBase64, mimeType: mediaType } },
+    { text: instruction }
   ];
-  return runAssistantLoop(content, history);
+  return runAssistantLoop(parts, history);
 };
 
 // ✍️ AI writes a product description for a seller from a few basic fields.
@@ -326,24 +329,20 @@ export const generateProductDescription = async (input: {
   if (input.brand) parts.push(`Бренд: ${input.brand}`);
   if (input.keywords) parts.push(`Калидвожаҳо/шарҳи кӯтоҳи фурӯшанда: ${input.keywords}`);
 
-  const response = await anthropic.messages.create({
+  const model = getClient().getGenerativeModel({
     model: MODEL,
-    max_tokens: 1024,
-    output_config: { effort: 'low' },
-    system:
+    systemInstruction:
       'Ту копирайтери e-commerce ҳастӣ. Барои маҳсулоти зерин як тавсифи ҷолиб, дақиқ ва фурӯшандаи 2-4 ҷумлаӣ бо забони тоҷикӣ навис. Танҳо матни тавсифро баргардон — бе сарлавҳа, бе рӯйхат, бе эмодзӣ. Хусусиятҳои асосиро зикр кун ва харидорро ба харид ташвиқ кун. Аз даъвоҳои бардурӯғ худдорӣ кун.',
-    messages: [{ role: 'user', content: parts.join('\n') }]
+    generationConfig: { maxOutputTokens: 1024 }
   });
 
-  if (response.stop_reason === 'refusal') return { description: '' };
-
-  const description = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join(' ')
-    .trim();
-
-  return { description };
+  try {
+    const result = await model.generateContent(parts.join('\n'));
+    return { description: safeText(result.response) };
+  } catch (err) {
+    console.error('generateProductDescription failed:', err);
+    return { description: '' };
+  }
 };
 
 export interface ReviewSummary {
@@ -351,17 +350,6 @@ export interface ReviewSummary {
   cons: string[];
   verdict: string;
 }
-
-const REVIEW_SUMMARY_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    pros: { type: 'array', items: { type: 'string' } },
-    cons: { type: 'array', items: { type: 'string' } },
-    verdict: { type: 'string' }
-  },
-  required: ['pros', 'cons', 'verdict'],
-  additionalProperties: false
-};
 
 // ⭐ AI condenses many reviews into pros / cons / a one-line verdict.
 export const summarizeReviews = async (
@@ -372,30 +360,34 @@ export const summarizeReviews = async (
     .map((r, i) => `Тақризи ${i + 1} (${r.rating}/5): ${r.comment}`)
     .join('\n');
 
-  const response = await anthropic.messages.create({
+  const model = getClient().getGenerativeModel({
     model: MODEL,
-    max_tokens: 1024,
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: REVIEW_SUMMARY_SCHEMA } },
-    system: `Ту тақризҳои харидоронро оид ба маҳсулоти "${productName}" таҳлил мекунӣ. Нуктаҳои асосии мусбат (pros) ва манфиро (cons) бо забони тоҷикӣ, кӯтоҳ ва дақиқ ҷамъбаст кун — ҳар нукта 3-6 калима. "verdict" як ҷумлаи хулосавӣ бошад. Танҳо аз рӯи худи тақризҳо навис, чизе аз худ илова накун.`,
-    messages: [{ role: 'user', content: reviewsText }]
+    systemInstruction: `Ту тақризҳои харидоронро оид ба маҳсулоти "${productName}" таҳлил мекунӣ. Нуктаҳои асосии мусбат (pros) ва манфиро (cons) бо забони тоҷикӣ, кӯтоҳ ва дақиқ ҷамъбаст кун — ҳар нукта 3-6 калима. "verdict" як ҷумлаи хулосавӣ бошад. Танҳо аз рӯи худи тақризҳо навис, чизе аз худ илова накун.`,
+    generationConfig: {
+      maxOutputTokens: 1024,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          pros: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          cons: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          verdict: { type: SchemaType.STRING }
+        },
+        required: ['pros', 'cons', 'verdict']
+      }
+    }
   });
 
-  if (response.stop_reason === 'refusal') return { pros: [], cons: [], verdict: '' };
-
-  const text = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
-
   try {
-    const parsed = JSON.parse(text);
+    const result = await model.generateContent(reviewsText);
+    const parsed = JSON.parse(safeText(result.response));
     return {
       pros: Array.isArray(parsed.pros) ? parsed.pros : [],
       cons: Array.isArray(parsed.cons) ? parsed.cons : [],
       verdict: typeof parsed.verdict === 'string' ? parsed.verdict : ''
     };
-  } catch {
-    return { pros: [], cons: [], verdict: text.slice(0, 200) };
+  } catch (err) {
+    console.error('summarizeReviews failed:', err);
+    return { pros: [], cons: [], verdict: '' };
   }
 };
