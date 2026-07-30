@@ -181,10 +181,10 @@ type ReviewSummaryResponse =
 ---
 
 ## ⚙️ Ёддошт барои backend deploy (муҳим)
-Фичаҳои AI (ҷустуҷӯи аксӣ, генератсияи тавсиф, хулосаи тақриз) калиди **Google Gemini** мехоҳанд (сатҳи ройгон дорад — калидро аз [aistudio.google.com](https://aistudio.google.com) гир). Дар **Render → Environment** илова кун:
+Фичаҳои AI (ҷустуҷӯи аксӣ, генератсияи тавсиф, хулосаи тақриз) калиди **Groq** мехоҳанд (сатҳи ройгон, бе корти бонкӣ, дар Тоҷикистон кор мекунад — калидро аз [console.groq.com](https://console.groq.com) гир). Дар **Render → Environment** илова кун:
 ```
-GEMINI_API_KEY = ...
+GROQ_API_KEY = ...
 ```
-Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `gemini-2.0-flash`). То гузоштани калид, ин 3 endpoint `503` бармегардонанд — сайт вайрон намешавад. Флеш-фурӯш ва ёдоварии сабад бе AI кор мекунанд.
+Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `llama-3.3-70b-versatile`), `ASSISTANT_VISION_MODEL` (пешфарз `meta-llama/llama-4-scout-17b-16e-instruct`, барои ҷустуҷӯи аксӣ). То гузоштани калид, ин 3 endpoint `503` бармегардонанд — сайт вайрон намешавад. Флеш-фурӯш ва ёдоварии сабад бе AI кор мекунанд.
 
 Push ба `main` кофист — Render худкор `prisma db push`-ро иҷро мекунад, пас майдонҳо/ҷадвалҳои нав (FlashSale, `abandonedNotified`, кеши хулосаи тақриз) худкор татбиқ мешаванд. Ёдоварии сабад дар free tier-и Render (хоб пас аз ~15 дақиқа) best-effort аст — пас аз бедор шудани сервер кор мекунад.

@@ -1,29 +1,28 @@
-import {
-  GoogleGenerativeAI,
-  SchemaType,
-  type Content,
-  type Part,
-  type FunctionDeclaration
-} from '@google/generative-ai';
+import Groq from 'groq-sdk';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool
+} from 'groq-sdk/resources/chat/completions';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 
 // AI Shopping Assistant ("Yordamchii AI") — a virtual seller that reads the
 // buyer's request in plain language (Tajik / Russian / transliteration),
 // searches the real product catalogue via function calling, and recommends
-// concrete products with prices in Somoni. Powered by Google Gemini (free tier).
+// concrete products with prices in Somoni. Powered by Groq (free tier).
 
-const MODEL = process.env.ASSISTANT_MODEL || 'gemini-2.0-flash';
+const MODEL = process.env.ASSISTANT_MODEL || 'llama-3.3-70b-versatile';
+const VISION_MODEL = process.env.ASSISTANT_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 // Lazily-constructed client so importing this module never crashes when the
 // key is missing (all endpoints gate on isAssistantConfigured first).
-let _client: GoogleGenerativeAI | null = null;
-const getClient = (): GoogleGenerativeAI => {
-  if (!_client) _client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+let _client: Groq | null = null;
+const getClient = (): Groq => {
+  if (!_client) _client = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
   return _client;
 };
 
-export const isAssistantConfigured = (): boolean => Boolean(process.env.GEMINI_API_KEY);
+export const isAssistantConfigured = (): boolean => Boolean(process.env.GROQ_API_KEY);
 
 // The shape of a product card we return to the frontend to render.
 export interface ProductCard {
@@ -61,35 +60,41 @@ const SYSTEM_PROMPT = `Ту "Ёрдамчии Bozor TJ" ҳастӣ — фурӯ�
 - Агар ҳеҷ маҳсулоти мувофиқ набошад, ростқавлона бигӯ ва пешниҳод кун, ки харидор калимаи дигарро санҷад.
 - Дар матни ҷавобат рӯйхати дарози маҳсулотро такрор накун — корти маҳсулот ба таври алоҳида нишон дода мешавад. Танҳо кӯтоҳ шарҳ деҳ, ки чаро инҳоро пешниҳод кардӣ.`;
 
-const functionDeclarations: FunctionDeclaration[] = [
+const tools: ChatCompletionTool[] = [
   {
-    name: 'search_products',
-    description:
-      "Маҳсулотро дар базаи бозор ҷустуҷӯ мекунад. Аз рӯи ном, тавсиф, бренд, категория ва ранг мувофиқат меёбад. Барои ҳар дархости харидор истифода бар. Метавонӣ бо нархи ҳадди ақал/аксар ва категория маҳдуд кунӣ.",
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        query: {
-          type: SchemaType.STRING,
-          description: 'Калима ё калимаҳои ҷустуҷӯ (ном, навъ ё бренди маҳсулот).'
+    type: 'function',
+    function: {
+      name: 'search_products',
+      description:
+        "Маҳсулотро дар базаи бозор ҷустуҷӯ мекунад. Аз рӯи ном, тавсиф, бренд, категория ва ранг мувофиқат меёбад. Барои ҳар дархости харидор истифода бар. Метавонӣ бо нархи ҳадди ақал/аксар ва категория маҳдуд кунӣ.",
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Калима ё калимаҳои ҷустуҷӯ (ном, навъ ё бренди маҳсулот).'
+          },
+          maxPrice: { type: 'number', description: 'Нархи ҳадди аксар бо сомонӣ (ихтиёрӣ).' },
+          minPrice: { type: 'number', description: 'Нархи ҳадди ақал бо сомонӣ (ихтиёрӣ).' },
+          category: { type: 'string', description: 'Номи категория барои маҳдуд кардан (ихтиёрӣ).' }
         },
-        maxPrice: { type: SchemaType.NUMBER, description: 'Нархи ҳадди аксар бо сомонӣ (ихтиёрӣ).' },
-        minPrice: { type: SchemaType.NUMBER, description: 'Нархи ҳадди ақал бо сомонӣ (ихтиёрӣ).' },
-        category: { type: SchemaType.STRING, description: 'Номи категория барои маҳдуд кардан (ихтиёрӣ).' }
-      },
-      required: ['query']
+        required: ['query']
+      }
     }
   },
   {
-    name: 'get_product_details',
-    description:
-      'Маълумоти пурраи як маҳсулотро аз рӯи ID бармегардонад (тавсиф, андоза, ранг, захира).',
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        productId: { type: SchemaType.STRING, description: 'ID-и маҳсулот.' }
-      },
-      required: ['productId']
+    type: 'function',
+    function: {
+      name: 'get_product_details',
+      description:
+        'Маълумоти пурраи як маҳсулотро аз рӯи ID бармегардонад (тавсиф, андоза, ранг, захира).',
+      parameters: {
+        type: 'object',
+        properties: {
+          productId: { type: 'string', description: 'ID-и маҳсулот.' }
+        },
+        required: ['productId']
+      }
     }
   }
 ];
@@ -201,30 +206,6 @@ export interface AssistantResult {
   products: ProductCard[];
 }
 
-// Convert stored chat history to Gemini's Content[] format. Gemini requires the
-// first turn to be 'user' and the history not to end on an unanswered 'user'.
-const toGeminiHistory = (history: ChatMessage[]): Content[] => {
-  const items: Content[] = history
-    .filter((m) => m && typeof m.content === 'string' && m.content.trim() !== '')
-    .slice(-10)
-    .map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
-
-  while (items.length && items[0].role !== 'user') items.shift();
-  if (items.length && items[items.length - 1].role === 'user') items.pop();
-  return items;
-};
-
-const safeText = (response: { text: () => string }): string => {
-  try {
-    return (response.text() || '').trim();
-  } catch {
-    return '';
-  }
-};
-
 // Execute a function the model asked for; returns a plain object result.
 const runToolCall = async (
   name: string,
@@ -252,37 +233,61 @@ const runToolCall = async (
 // until it has an answer, and we collect every product it surfaced so the
 // frontend can render rich cards alongside the text reply.
 const runAssistantLoop = async (
-  userContent: string | Part[],
+  userMessage: string,
   history: ChatMessage[] = []
 ): Promise<AssistantResult> => {
   const collected = new Map<string, ProductCard>();
+  const client = getClient();
 
-  const model = getClient().getGenerativeModel({
-    model: MODEL,
-    systemInstruction: SYSTEM_PROMPT,
-    tools: [{ functionDeclarations }],
-    generationConfig: { maxOutputTokens: 2048 }
-  });
-
-  const chat = model.startChat({ history: toGeminiHistory(history) });
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...history
+      .filter((m) => m && typeof m.content === 'string' && m.content.trim() !== '')
+      .slice(-10)
+      .map((m) => ({ role: m.role, content: m.content } as ChatCompletionMessageParam)),
+    { role: 'user', content: userMessage }
+  ];
 
   let reply = '';
-  let result = await chat.sendMessage(userContent as string | Array<string | Part>);
 
   for (let step = 0; step < 6; step++) {
-    const calls = result.response.functionCalls();
-    if (!calls || calls.length === 0) {
-      reply = safeText(result.response);
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      max_tokens: 2048,
+      tools,
+      tool_choice: 'auto',
+      messages
+    });
+
+    const msg = completion.choices[0]?.message;
+    const toolCalls = msg?.tool_calls;
+
+    if (!toolCalls || toolCalls.length === 0) {
+      reply = (msg?.content || '').trim();
       break;
     }
 
-    const responseParts: Part[] = [];
-    for (const call of calls) {
-      const out = await runToolCall(call.name, call.args, collected);
-      responseParts.push({ functionResponse: { name: call.name, response: out } });
-    }
+    // Echo the assistant's tool-call turn back into the conversation.
+    messages.push({
+      role: 'assistant',
+      content: msg?.content ?? '',
+      tool_calls: toolCalls
+    });
 
-    result = await chat.sendMessage(responseParts);
+    for (const call of toolCalls) {
+      let args: any = {};
+      try {
+        args = JSON.parse(call.function.arguments || '{}');
+      } catch {
+        args = {};
+      }
+      const out = await runToolCall(call.function.name, args, collected);
+      messages.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        content: JSON.stringify(out)
+      });
+    }
   }
 
   if (!reply) {
@@ -298,23 +303,52 @@ const runAssistantLoop = async (
 export const chatWithAssistant = (message: string, history: ChatMessage[] = []): Promise<AssistantResult> =>
   runAssistantLoop(message, history);
 
-// 📸 Visual search: the buyer sends a photo; the assistant sees it, works out
-// what the product is, then searches the catalogue for matches.
-export const chatWithAssistantPhoto = (
+// Ask a vision model to describe the product in a photo (kept separate from the
+// tool loop so vision capability and tool-calling capability stay decoupled).
+const describeImage = async (imageBase64: string, mediaType: ImageMediaType): Promise<string> => {
+  const dataUrl = `data:${mediaType};base64,${imageBase64}`;
+  const completion = await getClient().chat.completions.create({
+    model: VISION_MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Ин чӣ маҳсулот аст? Навъ, ранг ва бренд (агар намоён бошад)-ро кӯтоҳ бо тоҷикӣ навис — 1-2 ҷумла, танҳо тавсиф.'
+          },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }
+    ]
+  });
+  return (completion.choices[0]?.message?.content || '').trim();
+};
+
+// 📸 Visual search: describe the photo, then run the normal text tool loop on
+// that description so it finds matching catalogue products.
+export const chatWithAssistantPhoto = async (
   imageBase64: string,
   mediaType: ImageMediaType,
   note?: string,
   history: ChatMessage[] = []
 ): Promise<AssistantResult> => {
-  const instruction = note && note.trim()
-    ? `Харидор ин аксро фиристод ва навишт: "${note.trim()}". Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо функсияи search_products монанди онро дар база ёб ва пешниҳод кун.`
-    : 'Харидор ин аксро фиристод. Аксро бодиққат бубин, бифаҳм чӣ маҳсулот аст (навъ, ранг, бренд агар намоён бошад) ва бо функсияи search_products монанди онро дар база ёб ва пешниҳод кун.';
+  let description = '';
+  try {
+    description = await describeImage(imageBase64, mediaType);
+  } catch (err) {
+    console.error('describeImage failed:', err);
+  }
 
-  const parts: Part[] = [
-    { inlineData: { data: imageBase64, mimeType: mediaType } },
-    { text: instruction }
-  ];
-  return runAssistantLoop(parts, history);
+  const notePart = note && note.trim() ? ` Харидор инчунин навишт: "${note.trim()}".` : '';
+  const query = description
+    ? `Харидор аксеро фиристод. Дар акс ин маҳсулот дида мешавад: "${description}".${notePart} Бо функсияи search_products монанди онро дар база ёб ва пешниҳод кун.`
+    : note && note.trim()
+      ? note.trim()
+      : 'Харидор аксеро фиристод, вале онро таҳлил карда натавонистам. Бо эҳтиром бипурс, ки маҳсулотро бо матн тавсиф кунад.';
+
+  return runAssistantLoop(query, history);
 };
 
 // ✍️ AI writes a product description for a seller from a few basic fields.
@@ -329,16 +363,20 @@ export const generateProductDescription = async (input: {
   if (input.brand) parts.push(`Бренд: ${input.brand}`);
   if (input.keywords) parts.push(`Калидвожаҳо/шарҳи кӯтоҳи фурӯшанда: ${input.keywords}`);
 
-  const model = getClient().getGenerativeModel({
-    model: MODEL,
-    systemInstruction:
-      'Ту копирайтери e-commerce ҳастӣ. Барои маҳсулоти зерин як тавсифи ҷолиб, дақиқ ва фурӯшандаи 2-4 ҷумлаӣ бо забони тоҷикӣ навис. Танҳо матни тавсифро баргардон — бе сарлавҳа, бе рӯйхат, бе эмодзӣ. Хусусиятҳои асосиро зикр кун ва харидорро ба харид ташвиқ кун. Аз даъвоҳои бардурӯғ худдорӣ кун.',
-    generationConfig: { maxOutputTokens: 1024 }
-  });
-
   try {
-    const result = await model.generateContent(parts.join('\n'));
-    return { description: safeText(result.response) };
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Ту копирайтери e-commerce ҳастӣ. Барои маҳсулоти зерин як тавсифи ҷолиб, дақиқ ва фурӯшандаи 2-4 ҷумлаӣ бо забони тоҷикӣ навис. Танҳо матни тавсифро баргардон — бе сарлавҳа, бе рӯйхат, бе эмодзӣ. Хусусиятҳои асосиро зикр кун ва харидорро ба харид ташвиқ кун. Аз даъвоҳои бардурӯғ худдорӣ кун.'
+        },
+        { role: 'user', content: parts.join('\n') }
+      ]
+    });
+    return { description: (completion.choices[0]?.message?.content || '').trim() };
   } catch (err) {
     console.error('generateProductDescription failed:', err);
     return { description: '' };
@@ -360,27 +398,21 @@ export const summarizeReviews = async (
     .map((r, i) => `Тақризи ${i + 1} (${r.rating}/5): ${r.comment}`)
     .join('\n');
 
-  const model = getClient().getGenerativeModel({
-    model: MODEL,
-    systemInstruction: `Ту тақризҳои харидоронро оид ба маҳсулоти "${productName}" таҳлил мекунӣ. Нуктаҳои асосии мусбат (pros) ва манфиро (cons) бо забони тоҷикӣ, кӯтоҳ ва дақиқ ҷамъбаст кун — ҳар нукта 3-6 калима. "verdict" як ҷумлаи хулосавӣ бошад. Танҳо аз рӯи худи тақризҳо навис, чизе аз худ илова накун.`,
-    generationConfig: {
-      maxOutputTokens: 1024,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          pros: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          cons: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          verdict: { type: SchemaType.STRING }
-        },
-        required: ['pros', 'cons', 'verdict']
-      }
-    }
-  });
-
   try {
-    const result = await model.generateContent(reviewsText);
-    const parsed = JSON.parse(safeText(result.response));
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Ту тақризҳои харидоронро оид ба маҳсулоти "${productName}" таҳлил мекунӣ. Нуктаҳои асосии мусбат (pros) ва манфиро (cons) бо забони тоҷикӣ, кӯтоҳ ва дақиқ ҷамъбаст кун — ҳар нукта 3-6 калима. Танҳо аз рӯи худи тақризҳо навис. Ҷавобро ҲАТМАН танҳо дар формати JSON бо ин сохт баргардон: {"pros": ["..."], "cons": ["..."], "verdict": "як ҷумлаи хулосавӣ"}`
+        },
+        { role: 'user', content: reviewsText }
+      ]
+    });
+
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
     return {
       pros: Array.isArray(parsed.pros) ? parsed.pros : [],
       cons: Array.isArray(parsed.cons) ? parsed.cons : [],
