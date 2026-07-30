@@ -1,106 +1,153 @@
-# 🆕 Промт — ТАНҲО функсияҳои нав (Zinda Bozor: Real-Time лаяи фаврӣ)
+# 🆕 Промт — ТАНҲО функсияи нав (🤖 Ёрдамчии AI-и харид)
 
-> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **3 функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts` ё `lib/socket.ts`, store, types) мутобиқ шав, чизи дигарро вайрон накун.
+> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **як функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
 
 Матни зери `---`-ро ба Claude/frontend AI диҳ.
 
 ---
 
-Backend навсозӣ шуд. Socket.io (WebSocket) аллакай барои чат истифода мешавад — ҳамон пайвастшавии `ws://`/`wss://`-ро истифода бар, танҳо 3 event-и наверо гӯш кун ва 2 event-и наверо фиристода.
+Backend навсозӣ шуд. Як фичаи нав илова шуд: **Ёрдамчии AI-и харид** — фурӯшандаи виртуалӣ, ки бо забони одӣ бо харидор сӯҳбат мекунад, худаш аз базаи маҳсулот мекобад ва вариантҳои мушаххасро бо акс ва нарх пешниҳод мекунад.
 
-## ⚠️ Муҳим: Socket акнун барои меҳмон (бе login) ҳам кор мекунад
-Пештар пайвастшавии socket **токен**-ро ҳатмӣ мехост. Акнун агар токен набошад ҳам, пайвастшавӣ қабул мешавад (ҳамчун "меҳмон") — танҳо чат/огоҳинома барои корбарони login-шуда фаъол мемонанд. Яъне дар **саҳифаи мол** (product page), новобаста аз он ки харидор login кардааст ё не, бояд socket пайваст шавад:
-```ts
-const socket = io(SOCKET_URL, { auth: { token: authToken || undefined } });
+## Endpoint-и ягона
+
 ```
-Агар `authToken` набошад, `undefined` фиристода шавад — socket ҳамоно кор мекунад (public feature-ҳо фаъол мешаванд).
+POST https://bozortj-back.onrender.com/api/assistant/chat
+Content-Type: application/json
+```
+
+**Аутентификатсия лозим НЕСТ** — ҳам меҳмон, ҳам корбари login-шуда истифода бурда метавонад (токен нафирист).
+
+### Дархост (request body)
+
+```json
+{
+  "message": "телефони арзон то 1500 сомонӣ барои модарам",
+  "history": [
+    { "role": "user", "content": "салом" },
+    { "role": "assistant", "content": "Салом! Чӣ ҷустуҷӯ доред?" }
+  ]
+}
+```
+
+- `message` (ҳатмӣ) — паёми ҷории харидор. Ҳадди аксар 1000 ҳарф.
+- `history` (ихтиёрӣ) — таърихи сӯҳбат барои контекст. **Танҳо `role` ва `content`-ро фирист** (объектҳои маҳсулотро дар history нафирист). Backend танҳо 10 паёми охирро истифода мебарад.
+
+Харидорон метавонанд тоҷикӣ, русӣ ё транслит («krossovka», «кросовки») нависанд — AI мақсадро мефаҳмад.
+
+### Ҷавоб (response 200)
+
+```json
+{
+  "reply": "Ана чанд телефони арзонро барои шумо ёфтам, ҳамааш то 1500 сомонӣ:",
+  "products": [
+    {
+      "id": "uuid",
+      "name": "Redmi A3",
+      "price": 1400,
+      "discountPrice": 1200,
+      "isOnDiscount": true,
+      "effectivePrice": 1200,
+      "brand": "Xiaomi",
+      "category": "Телефонҳо",
+      "image": "1712345678-phone.jpg",
+      "stockQuantity": 8,
+      "shopName": "TechStore"
+    }
+  ]
+}
+```
+
+- `reply` — матни ҷавоби AI (бо ҳамон забони харидор). Инро дар пуфаки чат нишон деҳ.
+- `products` — рӯйхати кортҳои маҳсулот барои рендер кардан (метавонад холӣ бошад).
+  - `image` — танҳо номи файл аст. URL-и пурра: `https://bozortj-back.onrender.com/uploads/{image}`. Агар `image` = `null` бошад, расми placeholder нишон деҳ.
+  - `effectivePrice` — нархе, ки бояд калон нишон дода шавад. Агар `isOnDiscount` = true бошад, нархи кӯҳна (`price`)-ро хатзада ва `discountPrice`-ро сурх нишон деҳ.
+  - `stockQuantity` — агар `0` бошад, «Тамом шуд» нишон деҳ ва тугмаи харидро ғайрифаъол кун.
+
+### Хатоҳо
+
+- `400` — `message` холӣ ё дароз аст.
+- `503` — `{ "message": "AI assistant is not configured..." }` — калиди AI дар сервер ҳоло гузошта нашудааст. Дар ин ҳолат ба корбар мулоим бигӯ: «Ёрдамчии AI ҳоло дастрас нест» ва тугмаро пинҳон/ғайрифаъол кун.
+- `500` — хатои дохилӣ, паёми умумӣ нишон деҳ.
 
 ---
 
-## 1. 👀 "N нафар ҳозир ин молро мебинанд" (Live Viewer Count)
+## Чӣ бояд созӣ (UI)
 
-Дар **саҳифаи мол** (product detail page), ҳангоми кушодан:
+### 1. Тугмаи шинокунандаи чат (floating button)
+- Дар кунҷи поёни рости ҳамаи саҳифаҳо як тугмаи мудаввар бо иконаи 🤖 ё чат.
+- Матни хурд: «Ёрдамчии AI» ё «Кӯмак мехоҳед?».
+- Бо клик — равзанаи чат кушода мешавад (modal ё drawer).
+
+### 2. Равзанаи чат
+- **Ҳошияи паёмҳо:** пуфакҳои корбар (рост) ва AI (чап).
+- Паёми хушомадии аввал аз AI: «Салом! 👋 Ман ёрдамчии хариди шумо ҳастам. Чӣ ҷустуҷӯ доред? Масалан: "куртаи сиёҳ размери M" ё "телефон то 2000 сомонӣ".»
+- **Майдони вуруд** + тугмаи фиристодан. Enter низ мефиристад.
+- Ҳангоми интизории ҷавоб — индикатори «навишта истодааст…» (typing / loader).
+
+### 3. Кортҳои маҳсулот дар чат
+- Баъди ҳар паёми AI, агар `products` холӣ набошад, дар зери матн кортҳои маҳсулотро horizontal scroll ё grid нишон деҳ:
+  - расм, ном, нарх (бо тахфиф агар бошад), бренд.
+  - тугмаи **«Дидан»** → корбарро ба саҳифаи ҳамон маҳсулот (`/product/{id}`) мебарад.
+  - ихтиёрӣ: тугмаи **«Ба сабад»** (агар корбар login карда бошад, аз API-и мавҷудаи сабад истифода бар).
+
+### 4. Мантиқи фиристодан
+- Ҳангоми фиристодан:
+  1. Паёми корбарро фавран дар чат нишон деҳ.
+  2. Дархостро бо `message` + `history` (таърихи то ин лаҳза, танҳо `role`+`content`) фирист.
+  3. Ҷавобро гир, `reply`-ро ҳамчун паёми AI ва `products`-ро ҳамчун корт нишон деҳ.
+  4. Ҳам паёми корбар ва ҳам паёми AI-ро ба `history`-и локалӣ илова кун, то дархости оянда контекст дошта бошад.
+- Хатоҳоро мулоим коркард кун (масалан 503 → «Ёрдамчии AI ҳоло дастрас нест»).
+
+### Мисоли дархост (fetch)
+
 ```ts
-socket.emit('view_product', productId);
+async function askAssistant(
+  message: string,
+  history: { role: 'user' | 'assistant'; content: string }[]
+) {
+  const res = await fetch('https://bozortj-back.onrender.com/api/assistant/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history })
+  });
+  if (res.status === 503) throw new Error('assistant_unavailable');
+  if (!res.ok) throw new Error('assistant_error');
+  return res.json(); // { reply, products }
+}
 ```
-Ҳангоми баромадан аз саҳифа (unmount) ё гузаштан ба моли дигар:
-```ts
-socket.emit('leave_product', productId);
-```
-Гӯш кардан ба навсозии рақам:
-```ts
-socket.on('viewer_count', ({ productId, count }) => { /* update UI */ });
-```
-
-### Чӣ бояд созӣ:
-- Дар боло/паҳлӯи расми мол як бейҷи хурд: "🔥 {count} нафар ҳозир мебинанд" — фақат агар `count > 1` нишон деҳ (худи корбар низ ҳисоб мешавад, пас 1 маънои "танҳо шумо" дорад — ин бейҷро пинҳон кун).
-- Дар `useEffect`, ҳангоми mount → `view_product`, ҳангоми cleanup → `leave_product`.
-
----
-
-## 2. 📦 "Faqat N to monad!" — Зиндагии захира (Live Stock Update)
-
-Гӯш кардан дар саҳифаи мол:
-```ts
-socket.on('stock_update', ({ productId, variantId, stockQuantity, productStockQuantity }) => {
-  // Агар variantId бо вариант-и интихобшуда мувофиқ бошад — stockQuantity-ро нав кун
-});
-```
-Ин ҳангоми **ҳар харид** (checkout)-и дигарон фаврӣ фиристода мешавад — ҳеҷ refresh лозим нест.
-
-### Чӣ бояд созӣ:
-- Дар саҳифаи мол, агар stock-и вариант-и интихобшуда ≤ 5 бошад, бо ранги сурх "Faqat {stockQuantity} to monad!" нишон диҳ.
-- Ҳангоми гирифтани `stock_update` барои ҳамон продуктест, ки ҳозир кушода аст — рақамро зинда нав кун (бе refetch аз REST).
-- Агар `stockQuantity === 0` шавад — тугмаи "Ба сабад илова кун"-ро ғайрифаъол кун ва "Тамом шуд" нишон диҳ.
-
----
-
-## 3. 🛎️ Огоҳиномаи фаврии фурӯшанда ва пайгирии зиндаи фармоиш
-
-### 3a. Фурӯшанда — toast фаврӣ барои фармоиши нав
-Event-и мавҷудаи `new_notification` акнун майдонҳои иловагӣ дорад:
-```ts
-socket.on('new_notification', (n) => {
-  // n = { title, content, createdAt, type?, orderId?, status? }
-  if (n.type === 'NEW_ORDER') {
-    // Дар панели Seller: toast/popup фаврӣ бо садо ("🛎️ Фармоиши нав! ...")
-    // Тугма "Дидан" → навигатсия ба /seller/orders/{n.orderId}
-  }
-});
-```
-- Дар **панели фурӯшанда**, гӯш кардан ба ин event-ро дар лейаути умумии панел (на танҳо як саҳифа) гузор, то дар ҳар куҷои панел бошад ҳам, toast пайдо шавад.
-- Як садои кӯтоҳ (notification sound, `.mp3` хурд) илова кун, ки ҳангоми `type === 'NEW_ORDER'` пахш шавад.
-
-### 3b. Харидор — пайгирии зиндаи фармоиш (бе refresh)
-Дар **саҳифаи пайгирии фармоиш** (order tracking, ки stepper-ро аз `GET /api/orders/{id}/timeline` нишон медиҳад — агар ин саҳифаро аллакай сохта бошед):
-```ts
-socket.on('order_status_changed', ({ orderId, status, note }) => {
-  // Агар orderId баробари фармоиши кушодашуда бошад — stepper-ро фаврӣ нав кун
-  // (бе дархости дубораи GET /timeline)
-});
-```
-Ин вақте фиристода мешавад, ки Seller/Admin статуси фармоишро тағйир диҳад (`PUT /api/orders/{id}/status`).
-
----
-
-## Хулосаи events
-
-| Event | Самт | Барои чӣ |
-|---|---|---|
-| `view_product` | client → server | Кушодани саҳифаи мол |
-| `leave_product` | client → server | Баромадан аз саҳифаи мол |
-| `viewer_count` | server → client | `{ productId, count }` |
-| `stock_update` | server → client | `{ productId, variantId, stockQuantity, productStockQuantity }` |
-| `new_notification` | server → client | `{ title, content, createdAt, type?, orderId?, status? }` (акнун бо `type: 'NEW_ORDER'` ё `'ORDER_STATUS'`) |
-| `order_status_changed` | server → client | `{ orderId, status, note }` |
 
 ## Типҳои TypeScript (илова кун)
+
 ```ts
-type ViewerCountEvent = { productId: string; count: number };
-type StockUpdateEvent = { productId: string; variantId: string; stockQuantity: number; productStockQuantity: number };
-type LiveNotification = { title: string; content: string; createdAt: string; type?: 'NEW_ORDER' | 'ORDER_STATUS'; orderId?: string; status?: string };
-type OrderStatusChangedEvent = { orderId: string; status: string; note: string | null };
+type AssistantProduct = {
+  id: string;
+  name: string;
+  price: number;
+  discountPrice: number | null;
+  isOnDiscount: boolean;
+  effectivePrice: number;
+  brand: string | null;
+  category: string | null;
+  image: string | null;
+  stockQuantity: number;
+  shopName: string | null;
+};
+
+type AssistantReply = { reply: string; products: AssistantProduct[] };
+type AssistantMessage = { role: 'user' | 'assistant'; content: string };
 ```
 
-## Ёддошт барои backend deploy
-Ҳеҷ тағйироти база лозим нест (танҳо тағйироти socket/controller). Push ба `main` кофист — Render худкор деплой мекунад.
+Дизайн бояд ба стили умумии сайт (рангҳо, шрифт, кунҷҳо) мувофиқ бошад. Чат бояд дар мобилӣ низ хуб кор кунад (responsive, full-screen дар экрани хурд).
+
+---
+
+## ⚙️ Ёддошт барои backend deploy (муҳим)
+Ин фича як калиди API-и Anthropic-ро талаб мекунад. Дар **Render → Environment** тағйирёбандаи муҳитро илова кун:
+
+```
+ANTHROPIC_API_KEY = sk-ant-...
+```
+
+Ихтиёрӣ: `ASSISTANT_MODEL` (пешфарз `claude-opus-4-8`). Барои арзонтар/тезтар кардан метавон ба `claude-haiku-4-5` иваз кард.
+
+Push ба `main` кофист — Render худкор деплой мекунад ва `prisma generate`-ро иҷро мекунад. Ҳеҷ тағйироти база лозим нест.

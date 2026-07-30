@@ -20,6 +20,7 @@ import notificationRoutes from './routes/notificationRoutes';
 import adminRoutes from './routes/adminRoutes';
 import addressRoutes from './routes/addressRoutes';
 import refundRoutes from './routes/refundRoutes';
+import assistantRoutes from './routes/assistantRoutes';
 
 
 
@@ -54,6 +55,7 @@ app.use('/api/addresses', addressRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
