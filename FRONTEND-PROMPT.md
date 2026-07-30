@@ -117,11 +117,7 @@ Backend навсозӣ шуд. Ба frontend-и мавҷуди маркетпл�
 
 ## Ёддошт барои backend deploy
 
-Ин 3 функсия ба ҷадвали **нав**-и база `OrderStatusHistory` эҳтиёҷ дорад. Пеш аз истифодаи production, дар сервери backend бояд иҷро шавад:
-```
-npx prisma db push
-```
-(бо `DATABASE_URL`-и воқеии Render/Postgres — на бо `.env`-и локалӣ).
+Ин 3 функсия ба ҷадвали **нав**-и база `OrderStatusHistory` эҳтиёҷ дорад. Ҳеҷ амали дастӣ лозим нест — Render ҳангоми ҳар push ба `main` худкор `prisma db push`-ро иҷро мекунад (дар Build Command), пас ҷадвали нав дар production худкор пайдо мешавад.
 
 ## Типҳои TypeScript (илова кун)
 ```ts
