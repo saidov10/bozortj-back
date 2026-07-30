@@ -210,6 +210,16 @@ model Order {
   updatedAt  DateTime       @updatedAt
   items      OrderItem[]
   refund     RefundRequest?
+  statusHistory OrderStatusHistory[]
+}
+
+model OrderStatusHistory {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    String   // "PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
+  note      String?
+  createdAt DateTime @default(now())
 }
 
 model OrderItem {

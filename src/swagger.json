@@ -420,6 +420,30 @@
         }
       }
     },
+    "/api/products/{id}/recommendations": {
+      "get": {
+        "summary": "Get Recommendations / Похожие товары / Тавсияи мол",
+        "tags": [
+          "Products"
+        ],
+        "description": "🇬🇧 **EN:** Products bought together with this one, falls back to same-category items.\n🇷🇺 **RU:** Товары, которые покупают вместе с этим, иначе товары той же категории.\n🇹🇯 **TJ:** Молҳое, ки якҷоя бо ин мол харида шудаанд, вагарна молҳои ҳамон категория.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recommended products list"
+          }
+        }
+      }
+    },
     "/api/products/{id}": {
       "get": {
         "summary": "Get Product details / Детали товара / Тафсилоти мол",
@@ -1530,6 +1554,35 @@
         }
       }
     },
+    "/api/orders/{id}/timeline": {
+      "get": {
+        "summary": "Get Order Timeline / Отслеживание заказа / Пайгирии фармоиш",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Status history / tracking stages for an order. (Buyer/Seller/Admin owning the order)\n🇷🇺 **RU:** История статусов заказа для отслеживания. (Владелец заказа: Покупатель/Продавец/Админ)\n🇹🇯 **TJ:** Таърихи статусҳои фармоиш барои пайгирӣ. (Соҳиби фармоиш: Харидор/Фурӯшанда/Админ)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order tracking timeline"
+          }
+        }
+      }
+    },
     "/api/coupons": {
       "get": {
         "summary": "Get Coupons / Список купонов / Рӯйхати купонҳо",
@@ -1652,6 +1705,25 @@
         "responses": {
           "200": {
             "description": "Analytics overview"
+          }
+        }
+      }
+    },
+    "/api/analytics/admin": {
+      "get": {
+        "summary": "Get Admin Analytics / Аналитика платформы / Омори платформа",
+        "tags": [
+          "Analytics"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "🇬🇧 **EN:** Platform-wide revenue, top sellers/products, order status breakdown and daily revenue. (Admin only)\n🇷🇺 **RU:** Общая выручка платформы, топ продавцы/товары, статусы заказов и выручка по дням. (Только для Админов)\n🇹🇯 **TJ:** Даромади умумии платформа, топ фурӯшандагон/молҳо, статусҳои фармоиш ва даромад аз рӯи рӯз. (Танҳо барои Админҳо)",
+        "responses": {
+          "200": {
+            "description": "Platform-wide analytics overview"
           }
         }
       }

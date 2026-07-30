@@ -137,6 +137,15 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         }
       });
 
+      // Record initial status in the tracking timeline
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: newOrder.id,
+          status: 'PENDING',
+          note: 'Order placed'
+        }
+      });
+
       // 2. Create Order Items & decrease stocks
       for (const item of cartItems) {
         const activePrice = getActivePrice(item.variant);
@@ -339,6 +348,9 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
               }
             }
           }
+        },
+        statusHistory: {
+          orderBy: { createdAt: 'asc' }
         }
       }
     });
@@ -386,7 +398,7 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, note } = req.body;
 
     const allowedStatuses = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
     if (!status || !allowedStatuses.includes(status)) {
@@ -421,6 +433,15 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       data: { status }
     });
 
+    // Record status change in the tracking timeline
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: id,
+        status,
+        note: note || null
+      }
+    });
+
     // Notify Buyer
     await createNotification(
       order.userId,
@@ -434,5 +455,60 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating order status', error: error.message });
+  }
+};
+
+// 5. Get Order Tracking Timeline (Buyer/Seller/Admin)
+export const getOrderTimeline = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { select: { shopId: true } },
+        statusHistory: { orderBy: { createdAt: 'asc' } }
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Verify ownership (same rules as getOrderById)
+    if (req.user.role === 'BUYER' && order.userId !== req.user.id) {
+      return res.status(403).json({ message: 'Forbidden: Access denied' });
+    }
+
+    if (req.user.role === 'SELLER') {
+      const shop = await prisma.shopProfile.findUnique({
+        where: { userId: req.user.id }
+      });
+      if (!shop) return res.status(404).json({ message: 'Shop profile not found' });
+
+      const hasShopItem = order.items.some((item) => item.shopId === shop.id);
+      if (!hasShopItem) {
+        return res.status(403).json({ message: 'Forbidden: Access denied' });
+      }
+    }
+
+    const allStages = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+    const isCancelled = order.status === 'CANCELLED';
+
+    return res.status(200).json({
+      orderId: order.id,
+      currentStatus: order.status,
+      isCancelled,
+      stages: isCancelled ? ['CANCELLED'] : allStages,
+      history: order.statusHistory.map((h) => ({
+        status: h.status,
+        note: h.note,
+        createdAt: h.createdAt
+      }))
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving order timeline', error: error.message });
   }
 };

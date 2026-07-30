@@ -529,6 +529,101 @@ export const getProductById = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Helper: shape a raw product record with averageRating/reviewCount
+const withRatingSummary = (product: any) => {
+  const reviews = product.reviews || [];
+  const reviewCount = reviews.length;
+  const averageRating = reviewCount > 0
+    ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewCount
+    : 0;
+  const { reviews: _reviews, ...productData } = product;
+  return { ...productData, averageRating, reviewCount };
+};
+
+const RECOMMENDATION_INCLUDE = {
+  images: true,
+  category: true,
+  subcategory: true,
+  brand: true,
+  color: true,
+  variants: { include: { color: true } },
+  shop: { select: { id: true, shopName: true } },
+  reviews: { select: { rating: true } }
+};
+
+// 5b. Get Product Recommendations (Public)
+// Combines "customers who bought this also bought" with a category-based fallback.
+export const getProductRecommendations = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = 8;
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // 1. Collaborative: find other products bought together with this one
+    const coOrderItems = await prisma.orderItem.findMany({
+      where: { variant: { productId: id } },
+      select: { orderId: true }
+    });
+    const orderIds = Array.from(new Set(coOrderItems.map((o) => o.orderId)));
+
+    const relatedIdScores: Record<string, number> = {};
+    if (orderIds.length > 0) {
+      const otherItems = await prisma.orderItem.findMany({
+        where: {
+          orderId: { in: orderIds },
+          variant: { productId: { not: id } }
+        },
+        select: { variant: { select: { productId: true } } }
+      });
+      otherItems.forEach((item) => {
+        const pid = item.variant.productId;
+        relatedIdScores[pid] = (relatedIdScores[pid] || 0) + 1;
+      });
+    }
+
+    const collaborativeIds = Object.entries(relatedIdScores)
+      .sort((a, b) => b[1] - a[1])
+      .map(([pid]) => pid)
+      .slice(0, limit);
+
+    let recommended: any[] = [];
+    if (collaborativeIds.length > 0) {
+      const products = await prisma.product.findMany({
+        where: { id: { in: collaborativeIds } },
+        include: RECOMMENDATION_INCLUDE
+      });
+      // Preserve co-purchase ranking order
+      const byId = new Map(products.map((p) => [p.id, p]));
+      recommended = collaborativeIds.map((pid) => byId.get(pid)).filter(Boolean);
+    }
+
+    // 2. Fallback / fill remaining slots: same category, excluding current + already picked
+    if (recommended.length < limit) {
+      const excludeIds = [id, ...recommended.map((p) => p.id)];
+      const fillers = await prisma.product.findMany({
+        where: {
+          categoryId: product.categoryId,
+          id: { notIn: excludeIds }
+        },
+        include: RECOMMENDATION_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        take: limit - recommended.length
+      });
+      recommended = [...recommended, ...fillers];
+    }
+
+    return res.status(200).json({
+      recommendations: recommended.map(withRatingSummary)
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving recommendations', error: error.message });
+  }
+};
+
 // 6. Add Review (Buyer Only)
 export const addReview = async (req: AuthRequest, res: Response) => {
   try {

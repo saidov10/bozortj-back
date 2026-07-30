@@ -1,59 +1,150 @@
-# 🆕 Промт — ТАНҲО функсияҳои нав (категорияи мағоза + формаи динамикии мол)
+# 🆕 Промт — ТАНҲО функсияҳои нав (Analytics Dashboard + Тавсияи мол + Пайгирии фармоиш)
 
-> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **3 функсияи навро** ба лоиҳаи мавҷуда илова кун. Матни зери `---`-ро ба Claude диҳ.
+> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **3 функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, store, types) мутобиқ шав, чизи дигарро вайрон накун.
+
+Матни зери `---`-ро ба Claude/frontend AI диҳ.
+
+---
+
+Backend навсозӣ шуд. Ба frontend-и мавҷуди маркетплейс (Next.js, ба `https://bozortj-back.onrender.com` пайваст) **3 функсияи навро** илова кун.
+
+## 1. 📊 Analytics Dashboard (Маъмур + Фурӯшанда)
+
+### Барои Фурӯшанда (Seller Dashboard)
+`GET /api/analytics` (token-и SELLER лозим) — акнун иловагӣ `orderStatusBreakdown` медиҳад:
+```json
+{
+  "analytics": {
+    "shopName": "MyShop",
+    "totalRevenue": 1520.5,
+    "totalItemsSold": 84,
+    "averageRating": 4.3,
+    "reviewCount": 21,
+    "topProducts": [{ "id": "...", "name": "...", "quantitySold": 12, "revenueGenerated": 240 }],
+    "monthlyBreakdown": { "2026-06": 500, "2026-07": 1020.5 },
+    "orderStatusBreakdown": { "PENDING": 3, "DELIVERED": 40, "CANCELLED": 2 }
+  }
+}
+```
+
+### Барои Маъмур (Admin Dashboard) — НАВ
+`GET /api/analytics/admin` (token-и ADMIN лозим):
+```json
+{
+  "analytics": {
+    "totalRevenue": 45230.75,
+    "totalItemsSold": 1204,
+    "totalOrders": 312,
+    "totalUsers": 540,
+    "totalBuyers": 480,
+    "totalSellers": 58,
+    "totalProducts": 890,
+    "totalShops": 58,
+    "topProducts": [{ "id": "...", "name": "...", "quantitySold": 60, "revenueGenerated": 3200 }],
+    "topSellers": [{ "id": "...", "shopName": "...", "revenue": 5400 }],
+    "orderStatusBreakdown": { "PENDING": 10, "PROCESSING": 8, "SHIPPED": 15, "DELIVERED": 260, "CANCELLED": 19 },
+    "dailyRevenue": { "2026-07-28": 320.5, "2026-07-29": 410, "2026-07-30": 275 }
+  }
+}
+```
+
+### Чӣ бояд созӣ:
+- Дар панели **Admin** саҳифаи нав ё бахши нав "Dashboard/Analytics" — карточкаҳои рақамӣ (stat cards) барои `totalRevenue`, `totalOrders`, `totalUsers`, `totalProducts`.
+- Диаграммаи хаттӣ/сутунӣ (line/bar chart) барои `dailyRevenue` (даромад аз рӯи рӯз).
+- Диаграммаи pie/donut барои `orderStatusBreakdown`.
+- Ҷадвал ё рӯйхат барои `topProducts` ва `topSellers`.
+- Дар панели **Seller** дашборди мавҷударо бо диаграммаи pie барои `orderStatusBreakdown` пурра кун (агар аллакай карточкаҳои `totalRevenue`/`topProducts`/`monthlyBreakdown` ҳастанд, онҳоро нигоҳ дор — танҳо иловаро гузор).
+- Китобхонаи диаграмма: ҳар чизе, ки лоиҳа аллакай истифода мебарад (масалан `recharts`) — агар нест, `recharts`-ро истифода бар.
 
 ---
 
-Backend навсозӣ шуд. Ба frontend-и мавҷуди маркетплейс (Next.js, ба `https://bozortj-back.onrender.com` пайваст) **3 функсияи навро** илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, store, types) мутобиқ шав, чизи дигарро вайрон накун.
+## 2. 🎯 Тавсияи мол (Product Recommendations) — НАВ
 
-## 1. 🏪 Дар signup-и Фурӯшанда — интихоби категорияи мағоза (ҲАТМӢ)
-Ҳоло ҳар мағоза ба **як категория** баста мешавад ва танҳо ҳамон навъ молро мефурӯшад.
-- Дар формаи **бақайдгирии фурӯшанда** (`register/seller`) як майдони нав илова кун: **интихоби категория** (dropdown).
-- Рӯйхатро аз `GET /api/categories` гир (ҷавоб: `{ categories: [{ id, name, subcategories, attributeFields }] }`).
-- Ҳангоми фиристодан майдони нав `categoryId`-ро ҳам дохил кун (multipart, ҳамроҳи `name, shopName, description, email, phone, password, avatar?`).
-- `categoryId` **ҳатмӣ** аст — агар холӣ бошад backend `400` медиҳад. Дар UI validation гузор.
-- Баъди login/register акнун `user.shop.category = { id, name }` меояд — онро дар store нигоҳ дор ва дар профили фурӯшанда нишон деҳ.
+`GET /api/products/{id}/recommendations` (public, token лозим нест) — 8 маҳсулоти тавсияшуда мебарорад: аввал маҳсулоте, ки якҷоя бо ин мол зиёд харида шудаанд ("customers who bought this also bought"), баъд аз ҳамон категория (агар кофӣ набошад):
+```json
+{
+  "recommendations": [
+    {
+      "id": "...", "name": "...", "price": 120, "discountPrice": 99, "isOnDiscount": true,
+      "images": [{ "url": "/uploads/products/xxx.jpg" }],
+      "category": { "id": "...", "name": "..." },
+      "brand": { "id": "...", "name": "..." },
+      "color": { "id": "...", "name": "...", "hexCode": "#000" },
+      "variants": [...],
+      "shop": { "id": "...", "shopName": "..." },
+      "averageRating": 4.2,
+      "reviewCount": 9
+    }
+  ]
+}
+```
 
-## 2. 🔒 Фурӯшанда танҳо категорияи худро мефурӯшад
-Дар панели фурӯшанда, формаи **илова/таҳрири мол**:
-- Категорияро **интихобшаванда накун** — онро **read-only** нишон деҳ (баробари `shop.category.name`), чун backend ҳар молро маҷбуран ба категорияи мағоза мебандад.
-- `categoryId`-ро фиристодан шарт нест (backend худаш мегузорад). Агар фиристӣ, бояд баробари `shop.category.id` бошад — вагарна `400` бо паёми «Your shop can only sell products in the "X" category».
-- **Subcategory**-ро ҳамоно интихоб кардан мумкин, вале танҳо аз зерқатегорияҳои ҳамон категория (аз `category.subcategories`).
-
-## 3. 🧩 Формаи динамикии мол вобаста ба категория (МУҲИМТАРИН)
-Ҳар категория майдонҳои махсуси худро дорад (Electronics → RAM, Storage, Screen Size…; Clothing → Material, Gender, Season…).
-- Майдонҳоро гир: `GET /api/categories/{id}/attributes` →
-  `{ categoryId, name, attributeFields: [{ key, label, type, options?, unit?, required? }] }`
-  (ё ҳамин `attributeFields` дар ҳар category-и `GET /api/categories` низ ҳаст — метавонӣ аз он гирӣ, бе дархости иловагӣ).
-- `type` ∈ `text` | `number` | `select` | `boolean`. Барои `select` — `options: string[]`; `unit` (масалан "GB", "ml") -ро дар паҳлӯи майдон нишон деҳ; `required: true` → validation.
-- Дар формаи **илова/таҳрири мол**, баъди интихоби категория, ин майдонҳоро **динамикӣ render кун**:
-  - `text` → input, `number` → input[type=number], `select` → dropdown бо options, `boolean` → checkbox/switch.
-- Қиматҳоро дар як объект ҷамъ кун: `{ [key]: value }`, масалан `{ "condition":"New", "ram":"8GB", "storage":"256GB" }`.
-- Ҳангоми фиристодани мол, инро ҳамчун **JSON-string** дар майдони `attributes` (дар ҳамон multipart form-data) гузор:
-  `formData.append('attributes', JSON.stringify(attrs))`.
-- Майдонҳои `required: true`-ро агар пур накунад, backend `400` медиҳад («Please fill in the required fields…») — дар frontend пеш аз фиристодан validation кун.
-
-### Нишон додани attributes
-- Дар **саҳифаи мол** (product detail), агар `product.attributes` бошад, як ҷадвали **«Хусусиятҳо / Характеристикаҳо»** созед: калид ↔ қимат (label-ро аз `attributeFields` мувофиқи `key` гир, то зебо ба тоҷикӣ/русӣ нишон диҳӣ).
-- `product.attributes` акнун дар ҷавоби `GET /api/products` ва `GET /api/products/:id` меояд (объект ё `null`).
+### Чӣ бояд созӣ:
+- Дар **саҳифаи мол** (product detail page), поёнтар аз тавсифи мол/шарҳҳо, бахши нав "Шояд ба шумо ҳам маъқул ояд" / "Молҳои монанд" илова кун.
+- Карточкаҳои маҳсулот — ҳамон компоненти мавҷудаи `ProductCard`-ро истифода бар (агар ҳаст), танҳо data-ро аз ин endpoint гир.
+- Агар `recommendations` холӣ буд, бахшро тамоман нишон надеҳ (padding-и холӣ насоз).
 
 ---
+
+## 3. 📦 Пайгирии фармоиш (Order Tracking Timeline) — НАВ
+
+`GET /api/orders/{id}/timeline` (token-и BUYER/SELLER/ADMIN, ки соҳиби фармоиш аст):
+```json
+{
+  "orderId": "...",
+  "currentStatus": "SHIPPED",
+  "isCancelled": false,
+  "stages": ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED"],
+  "history": [
+    { "status": "PENDING", "note": "Order placed", "createdAt": "2026-07-28T10:00:00Z" },
+    { "status": "PROCESSING", "note": null, "createdAt": "2026-07-29T09:00:00Z" },
+    { "status": "SHIPPED", "note": null, "createdAt": "2026-07-30T08:00:00Z" }
+  ]
+}
+```
+Эзоҳ: агар фармоиш бекор шуда бошад (`CANCELLED`), `stages` танҳо `["CANCELLED"]` мешавад ва `isCancelled: true`.
+
+Тағйир додани status (Seller/Admin) ҳоло майдони ихтиёрии `note` низ қабул мекунад:
+`PUT /api/orders/{id}/status` body: `{ "status": "SHIPPED", "note": "Аз анбор фиристода шуд" }`
+
+### Чӣ бояд созӣ:
+- Дар **саҳифаи тафсилоти фармоиш** (order detail, барои Buyer/Seller/Admin) — компоненти визуалии **stepper/timeline** илова кун: марҳилаҳо (`stages`) уфуқӣ ё амудӣ, марҳилаи гузашта ✅ сабз, марҳилаи ҷорӣ ⏳ фаъол, боқимонда хокистарӣ.
+- Зери stepper — рӯйхати `history` бо вақт (`createdAt`, ба формати маҳаллӣ табдил деҳ) ва `note` (агар бошад).
+- Агар `isCancelled: true` бошад — ба ҷои stepper як баннери сурх "Фармоиш бекор карда шуд" нишон деҳ.
+- Дар панели Seller, ҳангоми тағйири status, майдони ихтиёрии "Тавзеҳ (note)" илова кун, то бо `PUT /status` фиристода шавад.
+
+---
+
+## Ёддошт барои backend deploy
+
+Ин 3 функсия ба ҷадвали **нав**-и база `OrderStatusHistory` эҳтиёҷ дорад. Пеш аз истифодаи production, дар сервери backend бояд иҷро шавад:
+```
+npx prisma db push
+```
+(бо `DATABASE_URL`-и воқеии Render/Postgres — на бо `.env`-и локалӣ).
 
 ## Типҳои TypeScript (илова кун)
 ```ts
-type AttributeField = {
-  key: string; label: string;
-  type: 'text' | 'number' | 'select' | 'boolean';
-  options?: string[]; unit?: string; required?: boolean;
+type OrderStatusHistoryEntry = { status: string; note: string | null; createdAt: string };
+type OrderTimeline = {
+  orderId: string;
+  currentStatus: string;
+  isCancelled: boolean;
+  stages: string[];
+  history: OrderStatusHistoryEntry[];
 };
-type Category = { id: string; name: string; subcategories: {id:string;name:string}[]; attributeFields: AttributeField[] };
-// shop: акнун { id, shopName, description, category: { id, name } | null }
-// product: акнун майдони attributes?: Record<string, any> | null дорад
+type SellerAnalytics = {
+  shopName: string; totalRevenue: number; totalItemsSold: number; averageRating: number; reviewCount: number;
+  topProducts: { id: string; name: string; quantitySold: number; revenueGenerated: number }[];
+  monthlyBreakdown: Record<string, number>;
+  orderStatusBreakdown: Record<string, number>;
+};
+type AdminAnalytics = {
+  totalRevenue: number; totalItemsSold: number; totalOrders: number;
+  totalUsers: number; totalBuyers: number; totalSellers: number; totalProducts: number; totalShops: number;
+  topProducts: { id: string; name: string; quantitySold: number; revenueGenerated: number }[];
+  topSellers: { id: string; shopName: string; revenue: number }[];
+  orderStatusBreakdown: Record<string, number>;
+  dailyRevenue: Record<string, number>;
+};
 ```
-
-## Хулоса
-1. **Signup-и фурӯшанда** → dropdown-и категория (`categoryId` ҳатмӣ).
-2. **Формаи мол** → категория read-only (= категорияи мағоза), subcategory аз ҳамон.
-3. **Майдонҳои динамикӣ** аз `attributeFields` render кун → дар `attributes` (JSON-string) фирист; дар саҳифаи мол ҳамчун ҷадвали хусусиятҳо нишон деҳ.
-
-Ҳамааш тоҷикӣ, responsive, ба услуби мавҷуда. Дигар қисматҳоро тағйир надеҳ.
