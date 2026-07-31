@@ -2,6 +2,7 @@ import prisma from '../config/prisma';
 import { sendLiveNotification } from './chatSocket';
 import { notifyTelegram, InlineKeyboard } from './telegramService';
 import { notifyWebPush } from './webPushService';
+import { t } from '../config/messages';
 
 // Options for extra per-channel behaviour that isn't persisted.
 interface NotificationOptions {
@@ -36,4 +37,29 @@ export const createNotification = async (
   } catch (err) {
     console.error('Failed to create notification record:', err);
   }
+};
+
+// Same as createNotification, but the title/content are resolved from the i18n
+// catalog in the recipient's preferred language. Prefer this for any message
+// whose wording we control, so buyers and sellers are notified in Tajik or
+// Russian per their profile setting.
+export const createLocalizedNotification = async (
+  userId: string,
+  key: string,
+  params: Record<string, any> = {},
+  meta?: Record<string, any>,
+  options?: NotificationOptions
+) => {
+  let lang: string = 'tj';
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { language: true }
+    });
+    if (user?.language) lang = user.language;
+  } catch {
+    // fall back to Tajik
+  }
+  const { title, content } = t(lang, key, params);
+  return createNotification(userId, title, content, meta, options);
 };

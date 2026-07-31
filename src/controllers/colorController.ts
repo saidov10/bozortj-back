@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { cached, invalidateCache, TTL } from '../utils/cache';
 
-// Get all colors
+// Get all colors (cached — colors change rarely).
 export const getColors = async (req: Request, res: Response) => {
   try {
-    const colors = await prisma.color.findMany();
+    const colors = await cached('colors:all', TTL.long, () => prisma.color.findMany());
     return res.status(200).json({ colors });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving colors', error: error.message });
@@ -28,6 +29,7 @@ export const createColor = async (req: AuthRequest, res: Response) => {
     const color = await prisma.color.create({
       data: { name, hexCode: hexCode ?? null }
     });
+    invalidateCache('colors');
     return res.status(201).json({ message: 'Color created successfully', color });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error creating color', error: error.message });
@@ -55,6 +57,7 @@ export const updateColor = async (req: AuthRequest, res: Response) => {
       where: { id },
       data: dataToUpdate
     });
+    invalidateCache('colors');
     return res.status(200).json({ message: 'Color updated successfully', color: updated });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating color', error: error.message });
@@ -78,6 +81,7 @@ export const deleteColor = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.color.delete({ where: { id } });
+    invalidateCache('colors');
     return res.status(200).json({ message: 'Color deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error deleting color', error: error.message });

@@ -106,6 +106,43 @@ export const getSellerAnalytics = async (req: AuthRequest, res: Response) => {
       orderStatusBreakdown[status] = (orderStatusBreakdown[status] || 0) + 1;
     });
 
+    // 6. Traffic & conversion, low stock, and "viewed but not selling" — drawn
+    // from this shop's product catalog. viewCount is the total product-page views.
+    const shopProducts = await prisma.product.findMany({
+      where: { shopId: shop.id },
+      select: {
+        id: true,
+        name: true,
+        viewCount: true,
+        stockQuantity: true,
+        lowStockThreshold: true,
+        isPromoted: true,
+        promotedUntil: true
+      }
+    });
+
+    const totalViews = shopProducts.reduce((sum, p) => sum + p.viewCount, 0);
+    // Conversion = units sold / product-page views (as a percentage).
+    const conversionRate = totalViews > 0 ? +((totalItemsSold / totalViews) * 100).toFixed(2) : 0;
+
+    const lowStockProducts = shopProducts
+      .filter((p) => p.stockQuantity <= p.lowStockThreshold)
+      .map((p) => ({ id: p.id, name: p.name, stock: p.stockQuantity, threshold: p.lowStockThreshold }))
+      .sort((a, b) => a.stock - b.stock);
+
+    // Products getting attention but no sales — prime candidates for a price cut,
+    // better photos, or a promotion.
+    const now = Date.now();
+    const viewedNotSold = shopProducts
+      .filter((p) => p.viewCount > 0 && !productSalesCount[p.id])
+      .map((p) => ({ id: p.id, name: p.name, views: p.viewCount }))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 5);
+
+    const activePromotions = shopProducts.filter(
+      (p) => p.isPromoted && p.promotedUntil != null && new Date(p.promotedUntil).getTime() > now
+    ).length;
+
     return res.status(200).json({
       analytics: {
         shopName: shop.shopName,
@@ -115,7 +152,13 @@ export const getSellerAnalytics = async (req: AuthRequest, res: Response) => {
         reviewCount: reviews.length,
         topProducts,
         monthlyBreakdown,
-        orderStatusBreakdown
+        orderStatusBreakdown,
+        totalViews,
+        conversionRate,
+        lowStockProducts,
+        viewedNotSold,
+        activePromotions,
+        productCount: shopProducts.length
       }
     });
   } catch (error: any) {

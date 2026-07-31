@@ -2,10 +2,11 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { getAttributeFields } from '../config/categoryAttributes';
+import { cached, invalidateCache, TTL } from '../utils/cache';
 
 // --- CATEGORIES ---
 
-// Get all categories with subcategories
+// Get all categories with subcategories (cached — categories change rarely).
 export const getCategories = async (req: Request, res: Response) => {
   try {
 
@@ -15,13 +16,15 @@ export const getCategories = async (req: Request, res: Response) => {
 
 
     
-    const categories = await prisma.category.findMany({
-      include: { subcategories: true }
+    const categoriesWithFields = await cached('categories:all', TTL.long, async () => {
+      const categories = await prisma.category.findMany({
+        include: { subcategories: true }
+      });
+      return categories.map((c) => ({
+        ...c,
+        attributeFields: getAttributeFields(c.name)
+      }));
     });
-    const categoriesWithFields = categories.map((c) => ({
-      ...c,
-      attributeFields: getAttributeFields(c.name)
-    }));
     return res.status(200).json({ categories: categoriesWithFields });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving categories', error: error.message });
@@ -64,6 +67,7 @@ export const createCategory = async (req: AuthRequest, res: Response) => {
     const category = await prisma.category.create({
       data: { name }
     });
+    invalidateCache('categories');
     return res.status(201).json({ message: 'Category created successfully', category });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error creating category', error: error.message });
@@ -88,6 +92,7 @@ export const updateCategory = async (req: AuthRequest, res: Response) => {
       where: { id },
       data: { name }
     });
+    invalidateCache('categories');
     return res.status(200).json({ message: 'Category updated successfully', category: updated });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating category', error: error.message });
@@ -111,6 +116,7 @@ export const deleteCategory = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.category.delete({ where: { id } });
+    invalidateCache('categories');
     return res.status(200).json({ message: 'Category deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error deleting category', error: error.message });
@@ -169,6 +175,7 @@ export const createSubcategory = async (req: AuthRequest, res: Response) => {
       }
     });
 
+    invalidateCache('categories');
     return res.status(201).json({ message: 'Subcategory created successfully', subcategory });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error creating subcategory', error: error.message });
@@ -195,6 +202,7 @@ export const updateSubcategory = async (req: AuthRequest, res: Response) => {
       data: { name }
     });
 
+    invalidateCache('categories');
     return res.status(200).json({ message: 'Subcategory updated successfully', subcategory: updated });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating subcategory', error: error.message });
@@ -218,6 +226,7 @@ export const deleteSubcategory = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.subcategory.delete({ where: { id } });
+    invalidateCache('categories');
     return res.status(200).json({ message: 'Subcategory deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error deleting subcategory', error: error.message });

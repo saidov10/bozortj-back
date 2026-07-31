@@ -1,9 +1,47 @@
 import { Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
-import { createNotification } from '../services/notificationService';
+import { createNotification, createLocalizedNotification } from '../services/notificationService';
 import { broadcastStockUpdate, broadcastOrderStatus, broadcastFlashSaleUpdate } from '../services/chatSocket';
 import { buildOrderButtons } from '../services/telegramService';
+import { orderStatusLabel } from '../config/messages';
+
+// Warn a shop's owner when one of its products has run low after a sale. Fires
+// at most once per dip: the alert re-arms only when the product is restocked
+// above its threshold (handled in updateProduct). Best-effort, off the hot path.
+const checkLowStock = async (productIds: string[]): Promise<void> => {
+  try {
+    const unique = Array.from(new Set(productIds));
+    const products = await prisma.product.findMany({
+      where: { id: { in: unique } },
+      select: {
+        id: true,
+        name: true,
+        stockQuantity: true,
+        lowStockThreshold: true,
+        lowStockNotified: true,
+        shop: { select: { userId: true } }
+      }
+    });
+
+    for (const p of products) {
+      if (!p.lowStockNotified && p.stockQuantity <= p.lowStockThreshold) {
+        await createLocalizedNotification(
+          p.shop.userId,
+          'lowStock',
+          { productName: p.name, stock: p.stockQuantity },
+          { type: 'LOW_STOCK', productId: p.id }
+        );
+        await prisma.product.update({
+          where: { id: p.id },
+          data: { lowStockNotified: true }
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Low-stock check failed:', err);
+  }
+};
 
 // 1. Create Order (Checkout Cart)
 export const createOrder = async (req: AuthRequest, res: Response) => {
@@ -245,11 +283,12 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       });
     });
 
-    // Send Buyer In-App Notification
-    await createNotification(
+    // Send Buyer In-App Notification (localized to the buyer's language)
+    await createLocalizedNotification(
       req.user.id,
-      'Order Placed Successfully',
-      `Your order #${order?.id.substring(0, 8)} has been placed. Total: $${finalTotal.toFixed(2)}`
+      'order.placed',
+      { shortId: order?.id.substring(0, 8), total: finalTotal.toFixed(2) },
+      { type: 'ORDER_PLACED', orderId: order?.id }
     );
 
     // Send Seller Notifications (notify each shop whose items were bought)
@@ -260,15 +299,19 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         select: { userId: true, shopName: true }
       });
       if (shopProfile) {
-        await createNotification(
+        await createLocalizedNotification(
           shopProfile.userId,
-          'New Order Received',
-          `You received a new order for items in your shop "${shopProfile.shopName}".`,
+          'order.newForSeller',
+          { shopName: shopProfile.shopName },
           { type: 'NEW_ORDER', orderId: order?.id },
           order?.id ? { telegramButtons: buildOrderButtons(order.id) } : undefined
         );
       }
     }
+
+    // Low-stock alert: after stock was decremented, warn the seller for any
+    // product that has now dropped to/below its threshold (once per dip).
+    void checkLowStock(cartItems.map((item) => item.variant.productId));
 
     // Live stock broadcast: anyone currently viewing these products sees the
     // "Faqat N to monad!" counter update in real time, no refresh needed.
@@ -577,11 +620,16 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    // Notify Buyer
-    await createNotification(
+    // Notify Buyer (localized). We resolve the buyer's language so both the
+    // message wording and the status label are in their language.
+    const buyer = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { language: true }
+    });
+    await createLocalizedNotification(
       order.userId,
-      'Order Status Updated',
-      `Your order #${order.id.substring(0, 8)} status is now: ${status}`,
+      'order.statusChanged',
+      { shortId: order.id.substring(0, 8), statusLabel: orderStatusLabel(buyer?.language, status) },
       { type: 'ORDER_STATUS', orderId: order.id, status }
     );
 

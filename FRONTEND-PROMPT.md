@@ -1,4 +1,4 @@
-# 🆕 Промт — маҷмӯаи нави функсияҳо (4 фичаи фронтенд + 2 таҳти капот)
+# 🆕 Промт — маҷмӯаи нави функсияҳо (кашф, таблиғ, огоҳиҳо, i18n)
 
 > Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин функсияҳои навро ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, `lib/socket.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
 
@@ -6,157 +6,184 @@
 
 ---
 
-Backend боз навсозӣ шуд. Ин дафъа:
-**(1) Савол-ҷавоб дар саҳифаи мол**, **(2) Нархи расониш (фурӯшанда худаш мемонад)**, **(3) Молҳои монанд/тавсияҳо**, **(4) Расмҳои сабук (thumbnail)** — ва ду чизи «таҳти капот» (боти Telegram-и интерактивӣ ва ҳисоботи ҳаррӯза) ки frontend кор намехоҳанд.
+Backend боз навсозӣ шуд. Ин дафъа даҳ чиз илова шуд:
+**(1) Огоҳӣ дар бораи пастшавии нарх** (wishlist), **(2) Ҷустуҷӯи беҳтар + autocomplete**, **(3) Охирин дидашудаҳо**, **(4) Муқоисаи молҳо**, **(5) Молҳои таблиғшаванда (promoted)**, **(6) Огоҳии камшавии анбор (фурӯшанда)**, **(7) Аналитикаи васеи фурӯшанда**, **(8) Тавсияҳо (аллакай буд)**, **(9) Забон — тоҷикӣ/русӣ дар огоҳиҳо**, **(10) Пайгирии фармоиш бо огоҳии ҳар қадам**.
 
 `BASE = https://bozortj-back.onrender.com`. Расмҳо: `${BASE}{url}`. Токен: `Authorization: Bearer <token>`.
+Ҳар мол дар ҷавобҳо `images[]`, `variants[]`, `brand`, `category`, `color`, `shop {id, shopName}`, `averageRating`, `reviewCount` дорад — ҳамон шакли мавҷуда.
 
 ---
 
-## 1. ❓ Савол-ҷавоб дар саҳифаи мол (Product Q&A)
+## 1. 🔻 Огоҳӣ дар бораи пастшавии нарх
 
-Харидори тоҷик пеш аз харид ҳатман мепурсад («аслӣ аст?», «ба Хуҷанд мерасонед?»). Ҷавобҳо **оммавӣ** мемонанд — ҳар савол-ҷавоб фурӯши ояндаро меорад.
+Вақте фурӯшанда нархи молеро паст мекунад, ҳар харидоре ки он мол дар **рӯйхати дилхоҳ (wishlist)**-и ӯст, худкор огоҳӣ мегирад (in-app + Telegram + web push). **Аз тарафи frontend кори иловагӣ лозим нест** — огоҳӣ ҳамчун notification-и оддӣ меояд.
+
+Дар socket/notification-и live навъи нав:
+```json
+{ "type": "PRICE_DROP", "productId": "uuid" }
+```
+**UI:** дар зангӯлаи огоҳиҳо чунин огоҳиро бо иконаи 🔻 нишон деҳ; ҳангоми клик → саҳифаи мол (`/products/:productId`). Матн аллакай ба забони харидор омода аст.
+
+---
+
+## 2. 🔎 Ҷустуҷӯи беҳтар + Autocomplete
+
+Ҷустуҷӯ ҳоло **бесаробаробарӣ ба ҳарф** (case-insensitive), **бисёркалима** (ҳар калима ҷудо ҷустуҷӯ мешавад) ва ба **ном, тавсиф, бренд, категория ва зеркатегория** нигоҳ мекунад. Мисол: `samsung telefon` → бо бренд + категория ҳам меёбад.
+
+### Autocomplete (ҳангоми навиштан)
+```
+GET ${BASE}/api/products/search/suggestions?q=sam   (public)
+→ {
+    products:   [ { id, name } ],   // то 6-то
+    brands:     [ { id, name } ],   // то 4-то
+    categories: [ { id, name } ]    // то 4-то
+  }
+```
+- Аз 2 ҳарф сар карда даъват кун (debounce ~250ms). Агар `q.length < 2` — рӯйхати холӣ бармегардад.
+- **UI:** зери майдони ҷустуҷӯ dropdown бо се гурӯҳ: «Молҳо», «Брендҳо», «Категорияҳо». Клик ба мол → `/products/:id`; ба бренд → `/products?brandId=...`; ба категория → `/products?categoryId=...`.
+
+### Ҷустуҷӯ + филтр + тартиб (саҳифаи рӯйхат)
+```
+GET ${BASE}/api/products?search=...&categoryId=...&brandId=...&colorId=...
+    &minPrice=100&maxPrice=900&sort=price_asc&promoted=true
+```
+Параметрҳои нав:
+- `sort` = `price_asc` | `price_desc` | `newest` | `popular` (аз рӯи дидан). Бе `sort` — молҳои таблиғшуда аввал, баъд навтарин.
+- `minPrice`, `maxPrice` — филтри диапазони нарх.
+- `promoted=true` — танҳо молҳои таблиғшудаи фаъол.
+Ҳар мол акнун майдони `isPromotedActive: boolean` дорад (нишони «⭐ Таблиғ» гузор).
+
+**UI:** ба саҳифаи каталог dropdown-и «Тартиб» ва slider/майдони диапазони нарх илова кун.
+
+---
+
+## 3. 🕘 Охирин дидашудаҳо (Recently Viewed)
+
+Ҳар вақт харидори воридшуда саҳифаи молро мекушояд, он худкор ба таърих сабт мешавад (backend худаш ҳангоми `GET /api/products/:id` бо токен сабт мекунад — фақат мутмаин шав, ки ҳангоми кушодани саҳифаи мол **токен фиристода мешавад**).
 
 ```
-GET  ${BASE}/api/products/:id/questions          (public)        → { questions: [Q] }
-POST ${BASE}/api/products/:id/questions          (BUYER)  { question }        → { question: Q }
-POST ${BASE}/api/products/questions/:qid/answer  (SELLER) { answer }          → { question: Q }
-GET  ${BASE}/api/products/questions/pending       (SELLER)        → { questions: [Q + product] }
+GET ${BASE}/api/products/discovery/recently-viewed   (BUYER)
+→ { products: [ Product + { viewedAt } ] }   // то 12-то, навтарин аввал
 ```
+**UI:** дар саҳифаи асосӣ/профил блоки «🕘 Ба наздикӣ дидед» (карусели уфуқӣ). Танҳо барои харидори воридшуда нишон деҳ.
 
-`Q`:
+---
+
+## 4. ⚖️ Муқоисаи молҳо (Compare)
+
+```
+GET ${BASE}/api/products/discovery/compare?ids=ID1,ID2,ID3   (public, 2–4 мол)
+→ {
+    attributeKeys: ["ram", "storage", ...],   // ҷамъи ҳамаи хусусиятҳо
+    products: [ Product ]                       // бо тартиби дархостшуда
+  }
+```
+**UI:**
+- Дар корти мол/саҳифаи мол тугмаи «⚖️ Муқоиса» — ба рӯйхати муқоиса (дар store/localStorage, то 4-то) илова кунад.
+- Саҳифаи `/compare` — ҷадвали уфуқӣ: сатр-сатр нарх, бренд, ранг, рейтинг ва ҳар калиди `attributeKeys` (агар моле он хусусиятро надошта бошад — «—»). Сутунҳо = молҳо бо расм ва тугмаи «Ба сабад».
+
+---
+
+## 5. ⭐ Молҳои таблиғшаванда (Promoted / Featured)
+
+Фурӯшанда пул дода, молашро дар боло ҷой мекунад (ҳозир пардохт mock аст — фавран фаъол мешавад).
+
+### Барои саҳифаи асосӣ (оммавӣ)
+```
+GET ${BASE}/api/products/discovery/promoted   (public)
+→ { products: [ Product ] }   // то 12-то, таблиғи фаъол
+```
+**UI:** дар саҳифаи асосӣ боло блоки «⭐ Тавсияи мағозаҳо» (карусел). Дар каталог молҳои `isPromotedActive` бо нишони «⭐ Таблиғ».
+
+### Барои фурӯшанда (таблиғ кардани мол)
+```
+POST ${BASE}/api/products/:id/promote   (SELLER, соҳиби мол)   { days: 7 }
+→ { message, cost, dailyRate, promotedUntil, product: { id, isPromoted, promotedUntil } }
+```
+- `days` = 1..30 (агар зиёд/кам бошад, backend клип мекунад). Нарх = `days × dailyRate` (ҳозир 5 сомонӣ/рӯз).
+- Агар мол аллакай таблиғи фаъол дошта бошад — муддат **дароз** мешавад.
+**UI:** дар панели фурӯшанда назди ҳар мол тугмаи «⭐ Таблиғ кун» → модал: интихоби рӯзҳо + нишондоди нарх → тасдиқ. Баъди муваффақият «Таблиғ то {promotedUntil}» нишон деҳ.
+
+---
+
+## 6. ⚠️ Огоҳии камшавии анбор (фурӯшанда)
+
+Вақте баъди фурӯш захираи мол ба ҳадди муайян (пешфарз 5) ё камтар мерасад, фурӯшанда огоҳӣ мегирад (як бор дар ҳар камшавӣ; баъди пур кардани анбор аз нав фаъол мешавад).
+
+Навъи notification-и live:
+```json
+{ "type": "LOW_STOCK", "productId": "uuid" }
+```
+Фурӯшанда метавонад **ҳадди огоҳӣ**-ро худаш танзим кунад — ҳангоми навсозии мол майдони нав:
+```
+PUT ${BASE}/api/products/:id   (SELLER)   ... + lowStockThreshold: 3
+```
+**UI:** дар форми таҳрири мол майдони «Ҳадди огоҳии камшавии анбор» (рақам). Дар зангӯла огоҳиро бо иконаи ⚠️ ва линк ба таҳрири мол нишон деҳ.
+
+---
+
+## 7. 📊 Аналитикаи васеи фурӯшанда
+
+`GET ${BASE}/api/analytics` (SELLER) акнун майдонҳои нав дорад (ба илова ба ҳамаи майдонҳои қаблӣ):
 ```json
 {
-  "id": "uuid", "productId": "uuid",
-  "question": "Аслӣ аст?", "answer": "Бале, 100% аслӣ" | null,
-  "answeredAt": "..." | null, "createdAt": "...",
-  "isAnswered": true,
-  "askedBy": { "id": "uuid", "name": "Аҳмад" }
+  "analytics": {
+    "...": "майдонҳои кӯҳна (totalRevenue, topProducts, monthlyBreakdown ...)",
+    "totalViews": 1240,            // ҷамъи дидани ҳамаи молҳо
+    "conversionRate": 3.5,          // % (фурӯш ÷ дидан)
+    "productCount": 42,
+    "activePromotions": 2,
+    "lowStockProducts": [ { "id", "name", "stock", "threshold" } ],
+    "viewedNotSold":    [ { "id", "name", "views" } ]   // то 5-то: дида мешаванд, вале харида намешаванд
+  }
 }
 ```
-(Дар `/pending` ҳар савол `product: { id, name, image }` ҳам дорад.)
-
-**UI:**
-- **Саҳифаи мол** — блоки «❓ Савол-ҷавоб» (зери тавсиф/тақризҳо): рӯйхати саволҳои ҷавобдодашуда (савол + ҷавоби фурӯшанда + номи пурсанда). Барои харидори воридшуда — майдони «Саволатро нависед» + тугмаи «Фиристодан».
-- **Панели фурӯшанда → «Саволҳо»**: рӯйхати `pending` (беҷавоб) бо тугмаи «Ҷавоб додан» → майдони матн → `POST .../answer`.
-- Огоҳиномаҳо тавассути socket меоянд: `PRODUCT_QUESTION` (ба фурӯшанда), `QUESTION_ANSWERED` (ба харидор). Рӯйхатро аз нав бор кун.
+**UI (панели аналитикаи фурӯшанда):**
+- Кортҳои нав: «Ҷамъи дидан», «Конверсия %», «Таблиғҳои фаъол».
+- Блоки «⚠️ Мол кам монд» — рӯйхати `lowStockProducts` бо тугмаи таҳрир.
+- Блоки «👀 Дида мешавад, вале харида намешавад» (`viewedNotSold`) — маслиҳат: нархро паст кун ё таблиғ кун.
 
 ---
 
-## 2. 🚚 Нархи расониш — фурӯшанда худаш мемонад
+## 8. 🧩 Тавсияҳо (аллакай буд — ёдоварӣ)
 
-Ҳоло **ҳар фурӯшанда** нархи расонишашро худаш муайян мекунад (бо ихтиёран «аз фалон маблағ боло — ройгон»). Дар checkout ин ба маблағи умумӣ илова мешавад.
-
-### Фурӯшанда — танзимот
-Ҳамон endpoint-и танзимоти мағоза акнун ин майдонҳоро ҳам қабул мекунад:
 ```
-PUT ${BASE}/api/shops/settings/auto-reply   (SELLER, токен)
-Body (ҳама ихтиёрӣ): {
-  "autoReplyText"?, "autoReplyEnabled"?,
-  "deliveryFee": 15,                 // сомонӣ; 0 = ройгон
-  "freeDeliveryThreshold": 200        // аз 200 с. боло расониш ройгон; null/"" = хомӯш
-}
-→ { shop: { ..., deliveryFee, freeDeliveryThreshold } }
+GET ${BASE}/api/products/:id/recommendations   (public)
+→ { recommendations: [ Product ] }   // «якҷоя мехаранд» + ҳамон категория
 ```
-**UI:** дар танзимоти фурӯшанда ду майдон илова кун: «Нархи расониш (с.)» ва «Расониши ройгон аз (с.) — ихтиёрӣ».
-
-### Харидор — checkout
-Пеш аз тасдиқи фармоиш нархи расонишро нишон деҳ:
-```
-GET ${BASE}/api/orders/delivery-quote   (BUYER, токен)   // барои сабади ҷорӣ
-→ {
-  "productTotal": 350,
-  "deliveryTotal": 15,
-  "grandTotal": 365,
-  "perShop": [
-    { "shopId","shopName","subtotal": 350, "deliveryFee": 15,
-      "isFreeDelivery": false, "freeDeliveryThreshold": 200 }
-  ]
-}
-```
-**UI:** дар саҳифаи сабад/checkout сатрҳо: «Молҳо: 350 с.», «Расониш: 15 с.» (ё «Ройгон 🎉» агар `isFreeDelivery`), «Ҳамагӣ: 365 с.». Агар чанд мағоза бошад — `perShop`-ро ҷудо нишон деҳ.
-
-**Муҳим:** дар ҷавоби `POST /api/orders` акнун майдони `deliveryFee` ҳаст ва `totalPrice` аллакай расонишро дар бар мегирад — дар квитансия ҷудо нишон деҳ.
+**UI:** дар саҳифаи мол блоки «🧩 Молҳои монанд».
 
 ---
 
-## 3. 🎯 Молҳои монанд / Тавсияҳо
+## 9. 🌐 Забон — тоҷикӣ / русӣ
 
-Endpoint аллакай дар backend ҳаст — танҳо дар frontend истифода бар:
+Огоҳиҳо (фармоиш, пастшавии нарх, камшавии анбор, ҳолати фармоиш) акнун ба **забони интихобкардаи корбар** меоянд. Корбар забонро дар профил интихоб мекунад:
 ```
-GET ${BASE}/api/products/:id/recommendations   (public)   → { recommendations: [Product] }
+PUT ${BASE}/api/auth/me   (auth)   { language: "tj" | "ru" }
+→ { user: { ..., language } }
 ```
-Мантиқ: аввал «якҷоя харида шудаанд» (аз фармоишҳо), баъд ҳамон категория. Ҳар `Product` ҳамон сохтори маъмулии мол (бо `images`, `brand`, `category`, баҳо).
-
-**UI:** дар **поёни саҳифаи мол** секцияи «🎯 Молҳои монанд» ё «Инро ҳам гирифтанд» — карусели кортҳои мол. Агар холӣ бошад — секцияро нишон надеҳ.
+`GET /api/auth/me`, `login` ва `PUT /api/auth/me` ҳама майдони `language`-ро бармегардонанд.
+**UI:** дар танзимоти профил гузаришгари забон «Тоҷикӣ / Русский». (Ин танҳо забони огоҳиҳо/боти Telegram аст — тарҷумаи худи интерфейс дар ихтиёри frontend.)
 
 ---
 
-## 4. 🖼️ Расмҳои сабук (Thumbnail)
+## 10. 📦 Пайгирии фармоиш (огоҳии ҳар қадам)
 
-Акнун ҳар расми мол як нусхаи хурд (`thumbnailUrl`) дорад — барои рӯйхатҳо дар интернети суст. Дар `ProductImage`:
-```json
-{ "id": "uuid", "url": "/uploads/products/...", "thumbnailUrl": "/uploads/products/thumb-..." | null }
-```
+Аллакай `GET /api/orders/:id/timeline` ҳаст. Ҳоло дар ҳар тағйири ҳолат харидор огоҳии **тарҷумашуда** мегирад (ном + иконаи 📦), ҳам in-app, ҳам Telegram, ҳам web push. Ҳолатҳо: `PENDING → PROCESSING → SHIPPED → DELIVERED` (ё `CANCELLED`).
 
-**UI:** дар **рӯйхатҳо/гридҳо/карусель** `thumbnailUrl`-ро истифода бар, дар **саҳифаи мол** (расми калон) `url`-ро.
-```ts
-const src = `${BASE}${img.thumbnailUrl || img.url}`; // расмҳои кӯҳна thumbnailUrl надоранд → fallback
-```
-Ин рӯйхатҳоро якчанд маротиба сабуктар мекунад.
+Навъи notification: `{ "type": "ORDER_STATUS", "orderId": "uuid", "status": "SHIPPED" }` — ҳамчун пештар, вале матн тарҷумашуда.
+**UI:** ба саҳифаи фармоиш timeline-и зинапоя (агар ҳанӯз нест) илова кун; live-навсозӣ тавассути socket (event-и мавҷуда) — бе refresh.
 
 ---
 
-## 🔌 Socket — навъҳои нави огоҳинома
+### Хулоса — чӣ илова кунӣ
+1. Autocomplete-и ҷустуҷӯ + tartib/filtri narx.
+2. Карусели «Ба наздикӣ дидед» ва «⭐ Тавсияи мағозаҳо».
+3. Саҳифа/ҷадвали муқоиса `/compare`.
+4. Тугма ва модали «Таблиғ кун» дар панели фурӯшанда.
+5. Кортҳо ва блокҳои нави аналитика.
+6. Майдони `lowStockThreshold` дар форми мол.
+7. Гузаришгари забон дар профил.
+8. Нишони «⭐ Таблиғ» дар кортҳои мол.
 
-Ба `switch (n.type)`-и мавҷуд илова кун:
-```ts
-case 'PRODUCT_QUESTION':  break; // → фурӯшанда: панели «Саволҳо»
-case 'QUESTION_ANSWERED': break; // → харидор: саҳифаи мол, блоки Q&A
-// мавҷуда аз пеш: NEW_ORDER, ORDER_STATUS, ABANDONED_CART,
-// PRICE_OFFER, OFFER_ACCEPTED/REJECTED/COUNTERED, COUNTER_ACCEPTED,
-// PAYMENT_PAID, ORDER_PAID
-```
-
----
-
-## 🤖 Таҳти капот (frontend кор намехоҳад)
-
-- **Боти Telegram акнун интерактивӣ**: фурӯшанда пешниҳоди нархро **[✅ Қабул]/[❌ Рад]** ва фармоишро **[✅ Қабул кардам]/[🚚 Фиристодам]** аз худи Telegram идора мекунад; фармонҳои `/orders` (харидор) ва `/today` (ҳисоботи фурӯшанда). Ин ҳамон системаи notification-и мавҷуда аст — frontend танҳо тугмаи «Пайваст ба Telegram»-ро дорад (аз промти пешина).
-- **Ҳисоботи ҳаррӯза**: ҳар бегоҳ бот ба фурӯшандаи пайвастшуда ҷамъбасти рӯзро мефиристад. Худкор.
-
----
-
-## Типҳои TypeScript (илова кун)
-
-```ts
-type ProductQuestion = {
-  id: string; productId: string;
-  question: string; answer: string | null;
-  answeredAt: string | null; createdAt: string; isAnswered: boolean;
-  askedBy: { id: string; name: string } | null;
-  product?: { id: string; name: string; image: string | null }; // танҳо дар /pending
-};
-
-type DeliveryQuote = {
-  productTotal: number; deliveryTotal: number; grandTotal: number;
-  perShop: {
-    shopId: string; shopName: string; subtotal: number;
-    deliveryFee: number; isFreeDelivery: boolean; freeDeliveryThreshold: number | null;
-  }[];
-};
-
-// ProductImage акнун thumbnailUrl дорад:
-type ProductImage = { id: string; url: string; thumbnailUrl: string | null };
-```
-
-Дизайн ба стили умумии сайт мувофиқ бошад ва дар мобилӣ хуб кор кунад.
-
----
-
-## ⚙️ Ёддошт барои backend / deploy
-
-- **Тавсия — keep-alive (муҳим!):** Render дар free tier пас аз ~15 дақиқа хоб меравад ва боти Telegram қатъ мешавад. Дар [UptimeRobot](https://uptimerobot.com) (ройгон) як монитор соз, ки ҳар 5 дақиқа `https://bozortj-back.onrender.com/health`-ро занад — сервер бедор мемонад ва бот доимо кор мекунад.
-- Ҳеҷ калиди нав барои ин 4 фича лозим нест — фавран кор мекунанд.
-- Ихтиёрӣ: `SUMMARY_HOUR_UTC` (пешфарз 15 = ~20:00 дар Тоҷикистон) — вақти ҳисоботи ҳаррӯзаи Telegram.
-- Push ба `main` кофист — Render `prisma db push`-ро худкор иҷро мекунад, пас майдонҳои нав (`ShopProfile.deliveryFee/freeDeliveryThreshold`, `Order.deliveryFee`, `ProductImage.thumbnailUrl`, ҷадвали `ProductQuestion`) татбиқ мешаванд.
+Огоҳиҳои нав (`PRICE_DROP`, `LOW_STOCK`) танҳо ба зангӯлаи мавҷуда илова мешаванд — сохтори notification яксон аст.

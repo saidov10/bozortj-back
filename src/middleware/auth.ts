@@ -47,6 +47,31 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
   }
 };
 
+// Optional authentication: if a valid token is present, attach req.user; if not,
+// continue as an anonymous request instead of rejecting. Used on public routes
+// (e.g. product detail) that behave differently for logged-in buyers — recording
+// "recently viewed", personalising results — without forcing a login.
+export const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as UserPayload;
+    const dbUser = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { isBlocked: true }
+    });
+    if (dbUser && !dbUser.isBlocked) {
+      req.user = decoded;
+    }
+  } catch {
+    // Ignore an invalid/expired token — treat as anonymous.
+  }
+  next();
+};
+
 // Role check middleware factory
 export const authorize = (allowedRoles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {

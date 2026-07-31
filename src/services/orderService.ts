@@ -1,7 +1,8 @@
 import prisma from '../config/prisma';
-import { createNotification } from './notificationService';
+import { createLocalizedNotification } from './notificationService';
 import { broadcastOrderStatus } from './chatSocket';
 import { ServiceError } from '../utils/serviceError';
+import { orderStatusLabel } from '../config/messages';
 
 // Order helpers shared by the Telegram bot (advance status from a button, daily
 // summaries, buyer order list). The REST controller keeps its own copy of the
@@ -31,10 +32,14 @@ export const sellerAdvanceOrderStatus = async (
     data: { orderId, status, note: 'Updated via Telegram' }
   });
 
-  await createNotification(
+  const buyer = await prisma.user.findUnique({
+    where: { id: order.userId },
+    select: { language: true }
+  });
+  await createLocalizedNotification(
     order.userId,
-    'Order Status Updated',
-    `Your order #${orderId.substring(0, 8)} status is now: ${status}`,
+    'order.statusChanged',
+    { shortId: orderId.substring(0, 8), statusLabel: orderStatusLabel(buyer?.language, status) },
     { type: 'ORDER_STATUS', orderId, status }
   );
   broadcastOrderStatus(order.userId, { orderId, status, note: 'Updated via Telegram' });

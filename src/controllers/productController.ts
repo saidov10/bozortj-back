@@ -5,6 +5,15 @@ import { AuthRequest } from '../middleware/auth';
 import { getAttributeFields } from '../config/categoryAttributes';
 import { summarizeReviews, isAssistantConfigured } from '../services/assistantService';
 import { buildProductImageRecords } from '../utils/thumbnail';
+import { createLocalizedNotification } from '../services/notificationService';
+
+// Effective selling price of a product right now (respects an active discount).
+const effectivePrice = (p: { price: number; discountPrice: number | null; isOnDiscount: boolean }): number =>
+  p.isOnDiscount && p.discountPrice != null ? p.discountPrice : p.price;
+
+// A promotion counts as active only while it hasn't expired.
+export const isPromotionActive = (p: { isPromoted: boolean; promotedUntil: Date | null }): boolean =>
+  p.isPromoted && p.promotedUntil != null && p.promotedUntil.getTime() > Date.now();
 
 // Validate that required category-specific attribute fields are present.
 // Returns an array of missing field labels (empty if all good).
@@ -261,7 +270,20 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     }
 
     if (size) updateData.size = size;
-    if (stockQuantity) updateData.stockQuantity = parseInt(stockQuantity);
+    if (stockQuantity) {
+      const newStock = parseInt(stockQuantity);
+      updateData.stockQuantity = newStock;
+      // Restocked above the alert threshold → re-arm the low-stock alert so the
+      // seller is notified again next time it runs low.
+      if (newStock > product.lowStockThreshold) {
+        updateData.lowStockNotified = false;
+      }
+    }
+    // Allow the seller to tune their own low-stock alert threshold.
+    if (req.body.lowStockThreshold !== undefined && req.body.lowStockThreshold !== '') {
+      const threshold = parseInt(req.body.lowStockThreshold);
+      if (!isNaN(threshold) && threshold >= 0) updateData.lowStockThreshold = threshold;
+    }
 
     if (colorId) {
       const colorExists = await prisma.color.findUnique({ where: { id: colorId } });
@@ -345,12 +367,49 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
       });
     });
 
+    // Price-drop alert: if the effective selling price went down, notify every
+    // buyer who has this product on their wishlist (in their own language,
+    // mirrored to Telegram / web push). Fire-and-forget so it never blocks the
+    // seller's response.
+    if (updatedProduct) {
+      const oldPrice = effectivePrice(product);
+      const newPrice = effectivePrice(updatedProduct);
+      if (newPrice < oldPrice) {
+        void notifyWishlistPriceDrop(updatedProduct.id, updatedProduct.name, oldPrice, newPrice);
+      }
+    }
+
     return res.status(200).json({
       message: 'Product updated successfully',
       product: updatedProduct
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating product', error: error.message });
+  }
+};
+
+// Notify wishlist owners about a price drop on a product they saved.
+const notifyWishlistPriceDrop = async (
+  productId: string,
+  productName: string,
+  oldPrice: number,
+  newPrice: number
+): Promise<void> => {
+  try {
+    const savers = await prisma.wishlistItem.findMany({
+      where: { productId },
+      select: { userId: true }
+    });
+    for (const { userId } of savers) {
+      await createLocalizedNotification(
+        userId,
+        'priceDrop',
+        { productName, oldPrice: oldPrice.toFixed(2), newPrice: newPrice.toFixed(2) },
+        { type: 'PRICE_DROP', productId }
+      );
+    }
+  } catch (err) {
+    console.error('Price-drop notification failed:', err);
   }
 };
 
@@ -390,7 +449,7 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
 // 4. Get All Products with Filters (Public)
 export const getProducts = async (req: AuthRequest, res: Response) => {
   try {
-    const { categoryId, subcategoryId, brandId, colorId, size, shopId, search } = req.query;
+    const { categoryId, subcategoryId, brandId, colorId, size, shopId, search, sort, promoted, minPrice, maxPrice } = req.query;
 
     const where: any = {};
 
@@ -401,15 +460,50 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
     if (size) where.size = { equals: size as string, mode: 'insensitive' };
     if (shopId) where.shopId = shopId as string;
 
+    // Price range filter (matches on base price).
+    if (minPrice || maxPrice) {
+      where.price = {};
+      if (minPrice) where.price.gte = parseFloat(minPrice as string);
+      if (maxPrice) where.price.lte = parseFloat(maxPrice as string);
+    }
+
+    // Only currently-active promotions.
+    if (promoted === 'true') {
+      where.isPromoted = true;
+      where.promotedUntil = { gt: new Date() };
+    }
+
+    // Full-text-ish search: case-insensitive, multi-term (AND across terms),
+    // spanning product name/description plus brand, category and subcategory
+    // names — so "samsung telefon" matches by brand + category too.
     if (search) {
-      where.OR = [
-        { name: { contains: search as string } },
-        { description: { contains: search as string } }
-      ];
+      const terms = (search as string).trim().split(/\s+/).filter(Boolean).slice(0, 6);
+      if (terms.length > 0) {
+        where.AND = terms.map((term) => ({
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { description: { contains: term, mode: 'insensitive' } },
+            { brand: { name: { contains: term, mode: 'insensitive' } } },
+            { category: { name: { contains: term, mode: 'insensitive' } } },
+            { subcategory: { name: { contains: term, mode: 'insensitive' } } }
+          ]
+        }));
+      }
+    }
+
+    // Sort: explicit user choice, else promoted-active first then newest.
+    let orderBy: any;
+    switch (sort) {
+      case 'price_asc': orderBy = { price: 'asc' }; break;
+      case 'price_desc': orderBy = { price: 'desc' }; break;
+      case 'newest': orderBy = { createdAt: 'desc' }; break;
+      case 'popular': orderBy = { viewCount: 'desc' }; break;
+      default: orderBy = [{ isPromoted: 'desc' }, { createdAt: 'desc' }];
     }
 
     const products = await prisma.product.findMany({
       where,
+      orderBy,
       include: {
         images: true,
         category: true,
@@ -433,8 +527,8 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    // Add averageRating to response
-    const productsWithRating = products.map((product) => {
+    // Add averageRating to response and surface the live promotion flag.
+    let productsWithRating = products.map((product) => {
       const reviewCount = product.reviews.length;
       const averageRating =
         reviewCount > 0
@@ -446,10 +540,20 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
 
       return {
         ...productData,
+        isPromotedActive: isPromotionActive(product),
         averageRating,
         reviewCount
       };
     });
+
+    // With the default ordering, keep only *active* promotions ahead of the rest
+    // (an expired promotion still has isPromoted=true in the DB until cleaned up).
+    if (!sort || (sort !== 'price_asc' && sort !== 'price_desc' && sort !== 'newest' && sort !== 'popular')) {
+      productsWithRating = productsWithRating.sort((a, b) => {
+        if (a.isPromotedActive !== b.isPromotedActive) return a.isPromotedActive ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    }
 
     return res.status(200).json({ products: productsWithRating });
   } catch (error: any) {
@@ -505,6 +609,24 @@ export const getProductById = async (req: AuthRequest, res: Response) => {
 
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // Record the view: bump the aggregate counter (drives conversion analytics)
+    // and, for a logged-in buyer, refresh their "recently viewed" trail. Both are
+    // best-effort and never block the response.
+    prisma.product
+      .update({ where: { id }, data: { viewCount: { increment: 1 } } })
+      .catch(() => undefined);
+
+    if (req.user && req.user.role === 'BUYER') {
+      const buyerId = req.user.id;
+      prisma.recentlyViewed
+        .upsert({
+          where: { userId_productId: { userId: buyerId, productId: id } },
+          update: { viewedAt: new Date() },
+          create: { userId: buyerId, productId: id }
+        })
+        .catch(() => undefined);
     }
 
     const reviewCount = product.reviews.length;
@@ -849,5 +971,173 @@ export const getReviewSummary = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error summarizing reviews', error: error.message });
+  }
+};
+
+// 9. Search Suggestions / Autocomplete (Public) — GET /api/products/search/suggestions?q=
+// Lightweight typeahead: returns matching product names, brands and categories so
+// the frontend can render a dropdown as the buyer types.
+export const getSearchSuggestions = async (req: AuthRequest, res: Response) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (q.length < 2) {
+      return res.status(200).json({ products: [], brands: [], categories: [] });
+    }
+
+    const [products, brands, categories] = await Promise.all([
+      prisma.product.findMany({
+        where: { name: { contains: q, mode: 'insensitive' } },
+        select: { id: true, name: true },
+        orderBy: { viewCount: 'desc' },
+        take: 6
+      }),
+      prisma.brand.findMany({
+        where: { name: { contains: q, mode: 'insensitive' } },
+        select: { id: true, name: true },
+        take: 4
+      }),
+      prisma.category.findMany({
+        where: { name: { contains: q, mode: 'insensitive' } },
+        select: { id: true, name: true },
+        take: 4
+      })
+    ]);
+
+    return res.status(200).json({ products, brands, categories });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error fetching suggestions', error: error.message });
+  }
+};
+
+// 10. Recently Viewed (Buyer) — GET /api/products/discovery/recently-viewed
+// The buyer's browsing trail, most recent first.
+export const getRecentlyViewed = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const rows = await prisma.recentlyViewed.findMany({
+      where: { userId: req.user.id },
+      orderBy: { viewedAt: 'desc' },
+      take: 12,
+      include: { product: { include: RECOMMENDATION_INCLUDE } }
+    });
+
+    const products = rows
+      .filter((r) => r.product)
+      .map((r) => ({ ...withRatingSummary(r.product), viewedAt: r.viewedAt }));
+
+    return res.status(200).json({ products });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving recently viewed', error: error.message });
+  }
+};
+
+// 11. Compare Products (Public) — GET /api/products/discovery/compare?ids=a,b,c
+// Returns 2–4 products side by side with a unified attribute key set, so the
+// frontend can render a spec-comparison table without gaps.
+export const compareProducts = async (req: AuthRequest, res: Response) => {
+  try {
+    const ids = (req.query.ids as string || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+
+    if (ids.length < 2) {
+      return res.status(400).json({ message: 'Provide at least 2 product ids to compare (ids=a,b)' });
+    }
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: {
+        images: true,
+        category: true,
+        subcategory: true,
+        brand: true,
+        color: true,
+        variants: { include: { color: true } },
+        shop: { select: { id: true, shopName: true } },
+        reviews: { select: { rating: true } }
+      }
+    });
+
+    // Preserve the requested order.
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as typeof products;
+
+    // Union of all attribute keys across the compared products, so the table has
+    // one row per spec even when a product is missing that spec.
+    const attributeKeys = new Set<string>();
+    ordered.forEach((p) => {
+      if (p.attributes && typeof p.attributes === 'object') {
+        Object.keys(p.attributes as Record<string, any>).forEach((k) => attributeKeys.add(k));
+      }
+    });
+
+    return res.status(200).json({
+      attributeKeys: Array.from(attributeKeys),
+      products: ordered.map(withRatingSummary)
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error comparing products', error: error.message });
+  }
+};
+
+// 12. Promoted Products (Public) — GET /api/products/discovery/promoted
+// Active featured products for the homepage carousel.
+export const getPromotedProducts = async (req: AuthRequest, res: Response) => {
+  try {
+    const products = await prisma.product.findMany({
+      where: { isPromoted: true, promotedUntil: { gt: new Date() } },
+      orderBy: { promotedUntil: 'desc' },
+      take: 12,
+      include: RECOMMENDATION_INCLUDE
+    });
+    return res.status(200).json({ products: products.map(withRatingSummary) });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving promoted products', error: error.message });
+  }
+};
+
+// 13. Promote a Product (Seller) — POST /api/products/:id/promote  { days }
+// Seller pays to feature their product. This is a mock-payment scaffold (same
+// pattern as the online-payment MOCK provider): it activates the promotion
+// immediately and is ready to gate behind a real charge later.
+const PROMOTION_DAILY_RATE = 5; // somoni per day (informational, returned to UI)
+
+export const promoteProduct = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const { id } = req.params;
+    const days = Math.min(Math.max(parseInt(req.body.days) || 7, 1), 30); // clamp 1..30
+
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { shop: true }
+    });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (product.shop.userId !== req.user.id) {
+      return res.status(403).json({ message: 'You do not own this product' });
+    }
+
+    // Extend from the later of "now" or an existing active promotion.
+    const base = isPromotionActive(product) ? product.promotedUntil! : new Date();
+    const promotedUntil = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: { isPromoted: true, promotedUntil }
+    });
+
+    return res.status(200).json({
+      message: `Product promoted for ${days} day(s)`,
+      cost: days * PROMOTION_DAILY_RATE,
+      dailyRate: PROMOTION_DAILY_RATE,
+      promotedUntil: updated.promotedUntil,
+      product: { id: updated.id, isPromoted: updated.isPromoted, promotedUntil: updated.promotedUntil }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error promoting product', error: error.message });
   }
 };

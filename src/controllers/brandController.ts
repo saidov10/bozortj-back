@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { cached, invalidateCache, TTL } from '../utils/cache';
 
-// Get all brands
+// Get all brands (cached — brands change rarely).
 export const getBrands = async (req: Request, res: Response) => {
   try {
-    const brands = await prisma.brand.findMany();
+    const brands = await cached('brands:all', TTL.long, () => prisma.brand.findMany());
     return res.status(200).json({ brands });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving brands', error: error.message });
@@ -28,6 +29,7 @@ export const createBrand = async (req: AuthRequest, res: Response) => {
     const brand = await prisma.brand.create({
       data: { name }
     });
+    invalidateCache('brands');
     return res.status(201).json({ message: 'Brand created successfully', brand });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error creating brand', error: error.message });
@@ -52,6 +54,7 @@ export const updateBrand = async (req: AuthRequest, res: Response) => {
       where: { id },
       data: { name }
     });
+    invalidateCache('brands');
     return res.status(200).json({ message: 'Brand updated successfully', brand: updated });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating brand', error: error.message });
@@ -75,6 +78,7 @@ export const deleteBrand = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.brand.delete({ where: { id } });
+    invalidateCache('brands');
     return res.status(200).json({ message: 'Brand deleted successfully' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error deleting brand', error: error.message });

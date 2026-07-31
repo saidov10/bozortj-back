@@ -17,6 +17,7 @@ model User {
   name         String   // Buyer name, Admin name, or Seller Contact name
   avatarUrl    String?  // Profile picture (optional)
   isBlocked    Boolean  @default(false)
+  language     String   @default("tj") // "tj" | "ru" — preferred language for notifications & bot
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -38,6 +39,7 @@ model User {
   priceOffers   PriceOffer[]   @relation("BuyerOffers")
   pushSubscriptions PushSubscription[]
   questionsAsked ProductQuestion[]
+  recentlyViewed RecentlyViewed[]
 
   // Chat relation
   sentMessages     Message[] @relation("SentMessages")
@@ -121,6 +123,14 @@ model Product {
   brandId       String
   brand         Brand          @relation(fields: [brandId], references: [id])
   attributes    Json?          // Category-specific specifications (key-value), e.g. { "ram": "8GB", "storage": "256GB" }
+
+  // Discovery & merchandising
+  viewCount         Int      @default(0)     // total product-page views (powers conversion analytics)
+  lowStockThreshold Int      @default(5)     // seller is alerted once stock drops to/below this
+  lowStockNotified  Boolean  @default(false) // guards against repeated low-stock alerts; reset on restock
+  isPromoted        Boolean  @default(false) // seller-paid featured placement
+  promotedUntil     DateTime?                // promotion is active while now < promotedUntil
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -137,6 +147,21 @@ model Product {
   flashSales    FlashSale[]
   priceOffers   PriceOffer[]
   questions     ProductQuestion[]
+  recentViews   RecentlyViewed[]
+}
+
+// Per-buyer "recently viewed" history — one row per (buyer, product), refreshed
+// on each product view so the buyer sees their latest browsing trail and we can
+// power "continue where you left off" and comparison shortcuts.
+model RecentlyViewed {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  viewedAt  DateTime @default(now())
+
+  @@unique([userId, productId])
 }
 
 model ProductVariant {

@@ -8,7 +8,12 @@ import {
   getProductRecommendations,
   getReviewSummary,
   addReview,
-  replyToReview
+  replyToReview,
+  getSearchSuggestions,
+  getRecentlyViewed,
+  compareProducts,
+  getPromotedProducts,
+  promoteProduct
 } from '../controllers/productController';
 import {
   getProductQuestions,
@@ -16,7 +21,7 @@ import {
   answerQuestion,
   getPendingQuestions
 } from '../controllers/qaController';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth';
 import { uploadProductImages, uploadReviewImages } from '../middleware/upload';
 import { productValidator, reviewValidator } from '../middleware/validation';
 
@@ -26,9 +31,15 @@ const router = Router();
 router.get('/questions/pending', authenticate, authorize(['SELLER']), getPendingQuestions);
 router.post('/questions/:qid/answer', authenticate, authorize(['SELLER']), answerQuestion);
 
+// Search & discovery (register before '/:id' catch-alls)
+router.get('/search/suggestions', getSearchSuggestions);
+router.get('/discovery/promoted', getPromotedProducts);
+router.get('/discovery/compare', compareProducts);
+router.get('/discovery/recently-viewed', authenticate, authorize(['BUYER']), getRecentlyViewed);
+
 // Public routes
 router.get('/', getProducts);
-router.get('/:id', getProductById);
+router.get('/:id', optionalAuthenticate, getProductById);
 router.get('/:id/recommendations', getProductRecommendations);
 router.get('/:id/review-summary', getReviewSummary);
 router.get('/:id/questions', getProductQuestions);
@@ -53,6 +64,9 @@ router.put(
 );
 
 router.delete('/:id', authenticate, authorize(['SELLER']), deleteProduct);
+
+// Promote a product (Seller only) — featured placement
+router.post('/:id/promote', authenticate, authorize(['SELLER']), promoteProduct);
 
 // Reply to review (Seller only)
 router.post('/reviews/:id/reply', authenticate, authorize(['SELLER']), replyToReview);

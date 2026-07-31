@@ -185,6 +185,7 @@ export const login = async (req: AuthRequest, res: Response) => {
         phone: user.phone,
         role: user.role,
         avatarUrl: user.avatarUrl,
+        language: user.language,
         shop: user.shopProfile ? {
           id: user.shopProfile.id,
           shopName: user.shopProfile.shopName,
@@ -224,6 +225,7 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         phone: user.phone,
         role: user.role,
         avatarUrl: user.avatarUrl,
+        language: user.language,
         shop: user.shopProfile ? {
           id: user.shopProfile.id,
           shopName: user.shopProfile.shopName,
@@ -244,7 +246,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const { name, phone } = req.body;
+    const { name, phone, language } = req.body;
 
     const dataToUpdate: any = {};
     if (name) dataToUpdate.name = name;
@@ -255,6 +257,10 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: 'Phone number must start with +992 followed by 9 digits' });
       }
       dataToUpdate.phone = phone;
+    }
+    // Preferred language for notifications & bot ("tj" or "ru").
+    if (language === 'tj' || language === 'ru') {
+      dataToUpdate.language = language;
     }
 
     if (req.file) {
@@ -278,6 +284,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         phone: updatedUser.phone,
         role: updatedUser.role,
         avatarUrl: updatedUser.avatarUrl,
+        language: updatedUser.language,
         shop: updatedUser.shopProfile ? {
           id: updatedUser.shopProfile.id,
           shopName: updatedUser.shopProfile.shopName,
