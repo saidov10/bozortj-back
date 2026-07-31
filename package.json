@@ -5,9 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "npx prisma generate && npx prisma db push --skip-generate && npx tsc && node -e \"require('fs').copyFileSync('src/swagger.json','dist/swagger.json')\"",
+    "build": "npx prisma generate && npx prisma db push --skip-generate --accept-data-loss && npx tsc && node -e \"require('fs').copyFileSync('src/swagger.json','dist/swagger.json')\"",
     "start": "node dist/server.js",
-    "db:push": "prisma db push",
+    "db:push": "prisma db push --accept-data-loss",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:seed": "ts-node prisma/seed.ts"
