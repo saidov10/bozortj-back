@@ -20,6 +20,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Telegram notification channel (feature: Telegram bot)
+  telegramChatId   String?  @unique // linked Telegram chat id; notifications are mirrored here
+  telegramLinkCode String?  @unique // one-time code the user sends to the bot to link their account
+
   // Seller specific
   shopProfile ShopProfile?
 
@@ -31,6 +35,8 @@ model User {
   notifications Notification[]
   reportsFiled  Report[]       @relation("Reporter")
   addresses     Address[]
+  priceOffers   PriceOffer[]   @relation("BuyerOffers")
+  pushSubscriptions PushSubscription[]
 
   // Chat relation
   sentMessages     Message[] @relation("SentMessages")
@@ -50,11 +56,12 @@ model ShopProfile {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  products   Product[]
-  orderItems OrderItem[]
-  coupons    Coupon[]
-  reports    Report[]
-  flashSales FlashSale[]
+  products    Product[]
+  orderItems  OrderItem[]
+  coupons     Coupon[]
+  reports     Report[]
+  flashSales  FlashSale[]
+  priceOffers PriceOffer[]
 }
 
 model Category {
@@ -123,6 +130,7 @@ model Product {
   variants      ProductVariant[]
   reports       Report[]
   flashSales    FlashSale[]
+  priceOffers   PriceOffer[]
 }
 
 model ProductVariant {
@@ -213,6 +221,9 @@ model Coupon {
   expiryDate    DateTime?
   shopId        String?
   shop          ShopProfile? @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // When set, only this buyer may redeem the coupon. Used for accepted price
+  // offers (bargaining) so the negotiated price is locked to the one buyer.
+  assignedUserId String?
   createdAt     DateTime     @default(now())
 
   orders Order[]
@@ -228,11 +239,13 @@ model Order {
   coupon     Coupon?        @relation(fields: [couponId], references: [id], onDelete: SetNull)
   addressId  String?
   address    Address?       @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  paymentMethod String       @default("COD") // "COD" (cash on delivery) or "ONLINE"
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
   items      OrderItem[]
   refund     RefundRequest?
   statusHistory OrderStatusHistory[]
+  payment    Payment?
 }
 
 model OrderStatusHistory {
@@ -327,4 +340,55 @@ model Message {
   text       String
   createdAt  DateTime @default(now())
   isRead     Boolean  @default(false)
+}
+
+// Price bargaining ("Нарх пешниҳод кун") — a buyer proposes a price for a
+// product; the seller accepts, rejects, or counter-offers. On acceptance a
+// single-use, buyer-locked coupon is generated so the buyer checks out at the
+// agreed price.
+model PriceOffer {
+  id           String      @id @default(uuid())
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  buyerId      String
+  buyer        User        @relation("BuyerOffers", fields: [buyerId], references: [id], onDelete: Cascade)
+  shopId       String
+  shop         ShopProfile @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  offeredPrice Float
+  message      String?
+  status       String      @default("PENDING") // PENDING, ACCEPTED, REJECTED, COUNTERED, EXPIRED
+  counterPrice Float?      // seller's counter-offer, when status = COUNTERED
+  couponCode   String?     // single-use coupon issued on acceptance
+  agreedPrice  Float?      // final agreed unit price once accepted
+  createdAt    DateTime    @default(now())
+  respondedAt  DateTime?
+  expiresAt    DateTime    // offer / issued coupon valid until this time
+}
+
+// Web Push (PWA) subscription — one row per browser/device push endpoint.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String   // client public key
+  auth      String   // client auth secret
+  createdAt DateTime @default(now())
+}
+
+// Payment record for an order. Provider-agnostic scaffold: works today with
+// "COD" (cash on delivery) and a "MOCK" online provider, and is ready to plug
+// in a real Tajik gateway (Alif Mobi / DC / Korti Milli) once merchant
+// credentials are available.
+model Payment {
+  id        String    @id @default(uuid())
+  orderId   String    @unique
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider  String    // "COD", "MOCK", "ALIF", "DC"
+  amount    Float
+  status    String    @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
+  reference String?   // provider-side transaction id
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }

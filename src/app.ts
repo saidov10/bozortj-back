@@ -22,6 +22,10 @@ import addressRoutes from './routes/addressRoutes';
 import refundRoutes from './routes/refundRoutes';
 import assistantRoutes from './routes/assistantRoutes';
 import flashSaleRoutes from './routes/flashSaleRoutes';
+import telegramRoutes from './routes/telegramRoutes';
+import pushRoutes from './routes/pushRoutes';
+import offerRoutes from './routes/offerRoutes';
+import paymentRoutes from './routes/paymentRoutes';
 
 
 
@@ -58,6 +62,10 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/flash-sales', flashSaleRoutes);
+app.use('/api/telegram', telegramRoutes);
+app.use('/api/push', pushRoutes);
+app.use('/api/offers', offerRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

@@ -95,6 +95,12 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ message: 'Coupon usage limit reached' });
       }
 
+      // Buyer-locked coupon (e.g. an accepted price offer): only the assigned
+      // buyer may redeem it.
+      if (coupon.assignedUserId && coupon.assignedUserId !== req.user.id) {
+        return res.status(400).json({ message: 'This coupon is not valid for your account' });
+      }
+
       // Check Shop Restriction & Min Purchase
       let discountBasePrice = originalTotal;
       if (coupon.shopId) {

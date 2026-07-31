@@ -2,6 +2,7 @@ import http from 'http';
 import app from './app';
 import { initChatSocket } from './services/chatSocket';
 import { startAbandonedCartJob } from './services/abandonedCartJob';
+import { startTelegramBot } from './services/telegramService';
 
 const PORT = process.env.PORT || 5000;
 
@@ -13,6 +14,9 @@ initChatSocket(server);
 
 // Start the abandoned-cart reminder background job
 startAbandonedCartJob();
+
+// Start the Telegram notification bot (no-op if TELEGRAM_BOT_TOKEN is unset)
+startTelegramBot();
 
 // Start listening
 server.listen(PORT, () => {
