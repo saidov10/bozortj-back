@@ -3,6 +3,7 @@ import app from './app';
 import { initChatSocket } from './services/chatSocket';
 import { startAbandonedCartJob } from './services/abandonedCartJob';
 import { startTelegramBot } from './services/telegramService';
+import { startDailySummaryJob } from './services/dailySummaryJob';
 
 const PORT = process.env.PORT || 5000;
 
@@ -17,6 +18,9 @@ startAbandonedCartJob();
 
 // Start the Telegram notification bot (no-op if TELEGRAM_BOT_TOKEN is unset)
 startTelegramBot();
+
+// Start the daily seller summary push (no-op if Telegram is unset)
+startDailySummaryJob();
 
 // Start listening
 server.listen(PORT, () => {

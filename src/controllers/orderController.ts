@@ -3,6 +3,7 @@ import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createNotification } from '../services/notificationService';
 import { broadcastStockUpdate, broadcastOrderStatus, broadcastFlashSaleUpdate } from '../services/chatSocket';
+import { buildOrderButtons } from '../services/telegramService';
 
 // 1. Create Order (Checkout Cart)
 export const createOrder = async (req: AuthRequest, res: Response) => {
@@ -131,6 +132,26 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       appliedCoupon = coupon;
     }
 
+    // Delivery fee: each shop sets its own flat fee, waived when that shop's
+    // subtotal reaches its free-delivery threshold. Charged on top of the
+    // (possibly discounted) product total.
+    let deliveryTotal = 0;
+    const shopIds = Object.keys(shopPrices);
+    if (shopIds.length > 0) {
+      const shops = await prisma.shopProfile.findMany({
+        where: { id: { in: shopIds } },
+        select: { id: true, deliveryFee: true, freeDeliveryThreshold: true }
+      });
+      for (const shop of shops) {
+        const subtotal = shopPrices[shop.id] || 0;
+        const qualifiesFree =
+          shop.freeDeliveryThreshold != null && subtotal >= shop.freeDeliveryThreshold;
+        if (!qualifiesFree) deliveryTotal += shop.deliveryFee;
+      }
+    }
+    deliveryTotal = +deliveryTotal.toFixed(2);
+    finalTotal = +(finalTotal + deliveryTotal).toFixed(2);
+
     // Execute order creation transaction
     const order = await prisma.$transaction(async (tx) => {
       // 1. Create Order record
@@ -139,6 +160,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           userId: req.user!.id,
           status: 'PENDING',
           totalPrice: finalTotal,
+          deliveryFee: deliveryTotal,
           couponId: appliedCoupon ? appliedCoupon.id : null,
           addressId
         }
@@ -242,7 +264,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           shopProfile.userId,
           'New Order Received',
           `You received a new order for items in your shop "${shopProfile.shopName}".`,
-          { type: 'NEW_ORDER', orderId: order?.id }
+          { type: 'NEW_ORDER', orderId: order?.id },
+          order?.id ? { telegramButtons: buildOrderButtons(order.id) } : undefined
         );
       }
     }
@@ -293,6 +316,70 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error checking out', error: error.message });
+  }
+};
+
+// 1b. Delivery quote for the buyer's current cart — lets the frontend show the
+// delivery fee (per shop) before checkout. Mirrors the fee logic in createOrder.
+export const getDeliveryQuote = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const cartItems = await prisma.cartItem.findMany({
+      where: { userId: req.user.id },
+      include: { variant: { include: { product: true } } }
+    });
+
+    const activePrice = (v: any) => {
+      const base = v.price !== null ? v.price : v.product.price;
+      const disc = v.discountPrice !== null ? v.discountPrice : v.product.discountPrice;
+      return v.product.isOnDiscount && disc !== null ? disc : base;
+    };
+
+    const shopSubtotals: Record<string, number> = {};
+    let productTotal = 0;
+    for (const item of cartItems) {
+      const line = activePrice(item.variant) * item.quantity;
+      productTotal += line;
+      const shopId = item.variant.product.shopId;
+      shopSubtotals[shopId] = (shopSubtotals[shopId] || 0) + line;
+    }
+
+    const shopIds = Object.keys(shopSubtotals);
+    const shops = shopIds.length
+      ? await prisma.shopProfile.findMany({
+          where: { id: { in: shopIds } },
+          select: { id: true, shopName: true, deliveryFee: true, freeDeliveryThreshold: true }
+        })
+      : [];
+
+    let deliveryTotal = 0;
+    const perShop = shops.map((shop) => {
+      const subtotal = shopSubtotals[shop.id] || 0;
+      const isFree = shop.freeDeliveryThreshold != null && subtotal >= shop.freeDeliveryThreshold;
+      const fee = isFree ? 0 : shop.deliveryFee;
+      deliveryTotal += fee;
+      return {
+        shopId: shop.id,
+        shopName: shop.shopName,
+        subtotal: +subtotal.toFixed(2),
+        deliveryFee: +fee.toFixed(2),
+        isFreeDelivery: isFree,
+        freeDeliveryThreshold: shop.freeDeliveryThreshold
+      };
+    });
+
+    deliveryTotal = +deliveryTotal.toFixed(2);
+    productTotal = +productTotal.toFixed(2);
+
+    return res.status(200).json({
+      productTotal,
+      deliveryTotal,
+      grandTotal: +(productTotal + deliveryTotal).toFixed(2),
+      perShop
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error computing delivery quote', error: error.message });
   }
 };
 

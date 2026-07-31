@@ -4,6 +4,7 @@ import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { getAttributeFields } from '../config/categoryAttributes';
 import { summarizeReviews, isAssistantConfigured } from '../services/assistantService';
+import { buildProductImageRecords } from '../utils/thumbnail';
 
 // Validate that required category-specific attribute fields are present.
 // Returns an array of missing field labels (empty if all good).
@@ -172,11 +173,8 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
         });
       }
 
-      // Create product images
-      const imageRecords = files.map((file) => ({
-        productId: newProduct.id,
-        url: `/uploads/products/${file.filename}`
-      }));
+      // Create product images (with generated thumbnails)
+      const imageRecords = await buildProductImageRecords(files, newProduct.id);
 
       await tx.productImage.createMany({
         data: imageRecords
@@ -323,12 +321,9 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
         data: updateData
       });
 
-      // If new images are uploaded, add them
+      // If new images are uploaded, add them (with generated thumbnails)
       if (files && files.length > 0) {
-        const imageRecords = files.map((file) => ({
-          productId: id,
-          url: `/uploads/products/${file.filename}`
-        }));
+        const imageRecords = await buildProductImageRecords(files, id);
 
         await tx.productImage.createMany({
           data: imageRecords

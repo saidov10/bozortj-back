@@ -78,7 +78,7 @@ export const updateShopSettings = async (req: any, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (req.user.role !== 'SELLER') return res.status(403).json({ message: 'Only sellers can modify shop settings' });
 
-    const { autoReplyText, autoReplyEnabled } = req.body;
+    const { autoReplyText, autoReplyEnabled, deliveryFee, freeDeliveryThreshold } = req.body;
 
     const shop = await prisma.shopProfile.findUnique({
       where: { userId: req.user.id }
@@ -90,11 +90,37 @@ export const updateShopSettings = async (req: any, res: Response) => {
 
     const enabledBool = autoReplyEnabled === 'true' || autoReplyEnabled === true;
 
+    // Delivery fee (seller-defined). Empty string / null clears the free-delivery
+    // threshold. Negative values are rejected.
+    let deliveryFeeVal = shop.deliveryFee;
+    if (deliveryFee !== undefined) {
+      const parsed = parseFloat(deliveryFee);
+      if (isNaN(parsed) || parsed < 0) {
+        return res.status(400).json({ message: 'deliveryFee must be a non-negative number' });
+      }
+      deliveryFeeVal = parsed;
+    }
+
+    let thresholdVal = shop.freeDeliveryThreshold;
+    if (freeDeliveryThreshold !== undefined) {
+      if (freeDeliveryThreshold === null || freeDeliveryThreshold === '') {
+        thresholdVal = null;
+      } else {
+        const parsed = parseFloat(freeDeliveryThreshold);
+        if (isNaN(parsed) || parsed < 0) {
+          return res.status(400).json({ message: 'freeDeliveryThreshold must be a non-negative number' });
+        }
+        thresholdVal = parsed;
+      }
+    }
+
     const updatedShop = await prisma.shopProfile.update({
       where: { id: shop.id },
       data: {
         autoReplyText: autoReplyText !== undefined ? autoReplyText : shop.autoReplyText,
-        autoReplyEnabled: autoReplyEnabled !== undefined ? enabledBool : shop.autoReplyEnabled
+        autoReplyEnabled: autoReplyEnabled !== undefined ? enabledBool : shop.autoReplyEnabled,
+        deliveryFee: deliveryFeeVal,
+        freeDeliveryThreshold: thresholdVal
       }
     });
 

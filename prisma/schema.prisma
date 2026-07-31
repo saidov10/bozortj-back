@@ -37,6 +37,7 @@ model User {
   addresses     Address[]
   priceOffers   PriceOffer[]   @relation("BuyerOffers")
   pushSubscriptions PushSubscription[]
+  questionsAsked ProductQuestion[]
 
   // Chat relation
   sentMessages     Message[] @relation("SentMessages")
@@ -53,6 +54,10 @@ model ShopProfile {
   autoReplyEnabled Boolean   @default(false)
   categoryId       String?   // The single category this shop is allowed to sell in
   category         Category? @relation(fields: [categoryId], references: [id])
+  // Delivery pricing — the seller sets their own flat delivery fee, with an
+  // optional order value above which delivery is free.
+  deliveryFee            Float   @default(0)
+  freeDeliveryThreshold  Float?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -131,6 +136,7 @@ model Product {
   reports       Report[]
   flashSales    FlashSale[]
   priceOffers   PriceOffer[]
+  questions     ProductQuestion[]
 }
 
 model ProductVariant {
@@ -151,10 +157,11 @@ model ProductVariant {
 }
 
 model ProductImage {
-  id        String   @id @default(uuid())
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  url       String
+  id           String   @id @default(uuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url          String
+  thumbnailUrl String?  // small resized copy for fast list rendering on slow connections
 }
 
 model Address {
@@ -240,6 +247,7 @@ model Order {
   addressId  String?
   address    Address?       @relation(fields: [addressId], references: [id], onDelete: SetNull)
   paymentMethod String       @default("COD") // "COD" (cash on delivery) or "ONLINE"
+  deliveryFee   Float        @default(0) // sum of each shop's delivery fee at checkout
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
   items      OrderItem[]
@@ -363,6 +371,21 @@ model PriceOffer {
   createdAt    DateTime    @default(now())
   respondedAt  DateTime?
   expiresAt    DateTime    // offer / issued coupon valid until this time
+}
+
+// Product Q&A ("Савол-ҷавоб") — a buyer asks a public question on a product
+// page; the seller answers. Answered questions stay public so future buyers see
+// them, turning one answer into many sales.
+model ProductQuestion {
+  id         String    @id @default(uuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String?
+  answeredAt DateTime?
+  createdAt  DateTime  @default(now())
 }
 
 // Web Push (PWA) subscription — one row per browser/device push endpoint.

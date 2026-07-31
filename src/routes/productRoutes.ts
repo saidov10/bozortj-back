@@ -10,17 +10,29 @@ import {
   addReview,
   replyToReview
 } from '../controllers/productController';
+import {
+  getProductQuestions,
+  askQuestion,
+  answerQuestion,
+  getPendingQuestions
+} from '../controllers/qaController';
 import { authenticate, authorize } from '../middleware/auth';
 import { uploadProductImages, uploadReviewImages } from '../middleware/upload';
 import { productValidator, reviewValidator } from '../middleware/validation';
 
 const router = Router();
 
+// Product Q&A (register before '/:id' catch-alls)
+router.get('/questions/pending', authenticate, authorize(['SELLER']), getPendingQuestions);
+router.post('/questions/:qid/answer', authenticate, authorize(['SELLER']), answerQuestion);
+
 // Public routes
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 router.get('/:id/recommendations', getProductRecommendations);
 router.get('/:id/review-summary', getReviewSummary);
+router.get('/:id/questions', getProductQuestions);
+router.post('/:id/questions', authenticate, authorize(['BUYER']), askQuestion);
 
 // Seller only routes
 router.post(

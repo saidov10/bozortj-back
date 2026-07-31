@@ -1,239 +1,162 @@
-# 🆕 Промт — ТАНҲО функсияҳои нав (5 фичаи нав)
+# 🆕 Промт — маҷмӯаи нави функсияҳо (4 фичаи фронтенд + 2 таҳти капот)
 
-> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин **5 функсияи навро** ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, `lib/socket.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
+> Frontend аллакай ҳаст ва ба `https://bozortj-back.onrender.com` пайваст аст. **Аз нав насоз** — танҳо ин функсияҳои навро ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, `lib/socket.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
 
 Матни зери `---`-ро ба Claude/frontend AI диҳ.
 
 ---
 
-Backend навсозӣ шуд. 5 фичаи нав илова шуд: **(1) Боти Telegram барои огоҳиномаҳо**, **(2) Савдо кардан — пешниҳоди нарх**, **(3) Нишонҳои эътимоди фурӯшанда**, **(4) Пардохти онлайн**, **(5) Web Push (PWA)**.
+Backend боз навсозӣ шуд. Ин дафъа:
+**(1) Савол-ҷавоб дар саҳифаи мол**, **(2) Нархи расониш (фурӯшанда худаш мемонад)**, **(3) Молҳои монанд/тавсияҳо**, **(4) Расмҳои сабук (thumbnail)** — ва ду чизи «таҳти капот» (боти Telegram-и интерактивӣ ва ҳисоботи ҳаррӯза) ки frontend кор намехоҳанд.
 
-`BASE = https://bozortj-back.onrender.com`. Расмҳо: `${BASE}/uploads/{image}`. Токен: `Authorization: Bearer <token>`.
-
-Ду фичаи калидӣ (**Telegram** ва **Web Push**) ба системаи **notification**-и мавҷуда пайванданд: ҳар огоҳиномае ки backend месозад (фармоиши нав, тағйири ҳолат, пешниҳоди нарх, пардохт...) акнун худкор ҳам ба Telegram ва ҳам ба Web Push мефиристад. Пас барои онҳо танҳо як бор «пайваст кардан» лозим аст.
-
----
-
-## 1. 📱 Боти Telegram — огоҳиномаҳо дар ҷое ки одамон ҳастанд
-
-Дар Тоҷикистон ҳама дар Telegram-анд. Корбар як бор ҳисоби худро ба боти расмӣ пайваст мекунад → баъд ҳамаи огоҳиномаҳо (харидор: «Фармоишат фиристода шуд», фурӯшанда: «🛎️ Фармоиши нав!») фавран ба Telegram мерасанд — ҳатто вақте сайт пӯшида ва Render хоб аст.
-
-```
-GET    ${BASE}/api/telegram/status   (токен)  → { configured, linked }
-GET    ${BASE}/api/telegram/link     (токен)  → { configured, code, url, botUsername }
-DELETE ${BASE}/api/telegram/link     (токен)  → { message }
-```
-
-**Ҷараён:**
-1. Дар профил (ё танзимот) блоки «Огоҳиномаҳои Telegram». Аввал `GET /status`-ро зан.
-2. Агар `configured: false` — блокро тамоман пинҳон кун (бот дар сервер танзим нашуда).
-3. Агар `linked: false` — тугмаи **«Пайваст ба Telegram»**. Ҳангоми клик `GET /link`-ро зан → корбарро ба `url` бар (`window.open(url)` — ин `https://t.me/<bot>?start=<code>` аст, Telegram-ро мекушояд, корбар «Start»-ро мезанад). Баъд ҳар чанд сония `GET /status`-ро аз нав зан (poll) то `linked: true` шавад → «Пайваст шуд ✅».
-4. Агар `linked: true` — «✅ Пайваст аст» + тугмаи **«Ҷудо кардан»** (`DELETE /link`).
-
-**UI:** содда — як тугма ва ҳолат. Дизайни сабз/хокистарӣ барои пайваст/ҷудо.
+`BASE = https://bozortj-back.onrender.com`. Расмҳо: `${BASE}{url}`. Токен: `Authorization: Bearer <token>`.
 
 ---
 
-## 2. 🤝 Савдо кардан (Price Bargaining) — фичаи имзоӣ
+## 1. ❓ Савол-ҷавоб дар саҳифаи мол (Product Q&A)
 
-Дар бозори воқеии тоҷикӣ ҳама савдо мекунанд. Харидор нархашро пешниҳод мекунад → фурӯшанда **қабул / рад / нархи ҷавобӣ** медиҳад. Агар қабул шавад — backend худкор **купони яккаса** месозад (ба ҳамон харидор баста, `DEAL-XXXXXX`), ки харидор дар харид истифода мебарад ва бо нархи мувофиқашуда мехарад.
+Харидори тоҷик пеш аз харид ҳатман мепурсад («аслӣ аст?», «ба Хуҷанд мерасонед?»). Ҷавобҳо **оммавӣ** мемонанд — ҳар савол-ҷавоб фурӯши ояндаро меорад.
 
-### Харидор
 ```
-POST ${BASE}/api/offers               (BUYER)
-  Body: { "productId", "offeredPrice", "message"? }
-  (offeredPrice бояд аз нархи ҷорӣ камтар бошад; барои ҳар мол як пешниҳоди фаъол)
-GET  ${BASE}/api/offers/mine          (BUYER)  → { offers: [Offer] }
-POST ${BASE}/api/offers/:id/accept-counter  (BUYER)  → { couponCode }
-      (қабули нархи ҷавобии фурӯшанда → купон сохта мешавад)
+GET  ${BASE}/api/products/:id/questions          (public)        → { questions: [Q] }
+POST ${BASE}/api/products/:id/questions          (BUYER)  { question }        → { question: Q }
+POST ${BASE}/api/products/questions/:qid/answer  (SELLER) { answer }          → { question: Q }
+GET  ${BASE}/api/products/questions/pending       (SELLER)        → { questions: [Q + product] }
 ```
 
-### Фурӯшанда
-```
-GET  ${BASE}/api/offers/received      (SELLER) → { offers: [Offer] }
-POST ${BASE}/api/offers/:id/accept    (SELLER) → { couponCode }
-POST ${BASE}/api/offers/:id/reject    (SELLER)
-POST ${BASE}/api/offers/:id/counter   (SELLER)
-      Body: { "counterPrice", "message"? }
-      (counterPrice бояд байни offeredPrice ва нархи ҷорӣ бошад)
-```
-
-`Offer`:
+`Q`:
 ```json
 {
   "id": "uuid", "productId": "uuid",
-  "offeredPrice": 900, "counterPrice": 1100, "agreedPrice": 900,
-  "status": "PENDING",           // PENDING | COUNTERED | ACCEPTED | REJECTED | EXPIRED
-  "message": "...", "couponCode": "DEAL-AB12CD",
-  "createdAt": "...", "respondedAt": "...", "expiresAt": "...", "isExpired": false,
-  "product": { "id","name","price","discountPrice","isOnDiscount","image","shopName","shopId" },
-  "buyer": { "id","name","avatarUrl" }
+  "question": "Аслӣ аст?", "answer": "Бале, 100% аслӣ" | null,
+  "answeredAt": "..." | null, "createdAt": "...",
+  "isAnswered": true,
+  "askedBy": { "id": "uuid", "name": "Аҳмад" }
 }
 ```
-
-**Пас аз қабул:** `couponCode`-ро ба харидор нишон деҳ ва бигӯ «Дар харид ин кодро истифода бар». Ин ҳамон майдони купони мавҷуда дар checkout аст (`couponCode` дар `POST /api/orders`). Купон яккаса (`maxUsage: 1`), танҳо барои ҳамон харидор ва то `expiresAt` эътибор дорад.
+(Дар `/pending` ҳар савол `product: { id, name, image }` ҳам дорад.)
 
 **UI:**
-- Дар **саҳифаи мол** (барои харидори воридшуда) тугмаи **«🤝 Нарх пешниҳод кун»** → модал бо майдони нарх (+паём ихтиёрӣ). Агар аллакай пешниҳоди фаъол бошад (`409`) — «Шумо аллакай пешниҳод доред».
-- Саҳифаи харидор **«Пешниҳодҳои ман»** (`/offers`): рӯйхат бо ҳолат. Агар `COUNTERED` — тугмаи «Қабули {counterPrice} с.» (`accept-counter`). Агар `ACCEPTED` — `couponCode` + тугмаи «Ба харид гузар».
-- Панели **фурӯшанда → «Пешниҳодҳо»**: рӯйхати `received` бо тугмаҳои **Қабул / Рад / Нархи ҷавобӣ**. Нархи ҷавобӣ — майдончаи хурди нарх.
-- Огоҳиномаҳо тавассути socket меоянд (ниг. поён) — рӯйхатро аз нав бор кун.
+- **Саҳифаи мол** — блоки «❓ Савол-ҷавоб» (зери тавсиф/тақризҳо): рӯйхати саволҳои ҷавобдодашуда (савол + ҷавоби фурӯшанда + номи пурсанда). Барои харидори воридшуда — майдони «Саволатро нависед» + тугмаи «Фиристодан».
+- **Панели фурӯшанда → «Саволҳо»**: рӯйхати `pending` (беҷавоб) бо тугмаи «Ҷавоб додан» → майдони матн → `POST .../answer`.
+- Огоҳиномаҳо тавассути socket меоянд: `PRODUCT_QUESTION` (ба фурӯшанда), `QUESTION_ANSWERED` (ба харидор). Рӯйхатро аз нав бор кун.
 
 ---
 
-## 3. 🏅 Нишонҳои эътимоди фурӯшанда (Trust Badges)
+## 2. 🚚 Нархи расониш — фурӯшанда худаш мемонад
 
-Аз маълумоти мавҷуда (тақризҳо, фармоишҳои расонидашуда, суръати ҷавоб дар чат) backend худкор нишонҳо ҳисоб мекунад. Эътимод = фурӯш барои харидоре ки аз фиреб метарсад.
+Ҳоло **ҳар фурӯшанда** нархи расонишашро худаш муайян мекунад (бо ихтиёран «аз фалон маблағ боло — ройгон»). Дар checkout ин ба маблағи умумӣ илова мешавад.
 
+### Фурӯшанда — танзимот
+Ҳамон endpoint-и танзимоти мағоза акнун ин майдонҳоро ҳам қабул мекунад:
 ```
-GET ${BASE}/api/shops/:id/badges   (public)
+PUT ${BASE}/api/shops/settings/auto-reply   (SELLER, токен)
+Body (ҳама ихтиёрӣ): {
+  "autoReplyText"?, "autoReplyEnabled"?,
+  "deliveryFee": 15,                 // сомонӣ; 0 = ройгон
+  "freeDeliveryThreshold": 200        // аз 200 с. боло расониш ройгон; null/"" = хомӯш
+}
+→ { shop: { ..., deliveryFee, freeDeliveryThreshold } }
 ```
-Ҷавоб:
-```json
-{
-  "shopId": "uuid",
-  "stats": {
-    "reviewCount": 12, "avgRating": 4.7, "deliveredOrders": 34,
-    "sellerReplyRate": 0.6, "avgResponseMinutes": 25
-  },
-  "badges": [
-    { "id": "trusted",   "label": "Фурӯшандаи боэътимод",     "icon": "⭐", "description": "Баҳои миёна 4.7 аз 12 тақриз" },
-    { "id": "proven",    "label": "Фурӯшандаи фаъол",          "icon": "📦", "description": "34 фармоиши расонидашуда" },
-    { "id": "fast-reply","label": "Зуд ҷавоб медиҳад",          "icon": "💬", "description": "Ба ҳисоби миёна дар 25 дақиқа" },
-    { "id": "engaged",   "label": "Ба тақризҳо ҷавоб медиҳад", "icon": "🗣️", "description": "..." }
+**UI:** дар танзимоти фурӯшанда ду майдон илова кун: «Нархи расониш (с.)» ва «Расониши ройгон аз (с.) — ихтиёрӣ».
+
+### Харидор — checkout
+Пеш аз тасдиқи фармоиш нархи расонишро нишон деҳ:
+```
+GET ${BASE}/api/orders/delivery-quote   (BUYER, токен)   // барои сабади ҷорӣ
+→ {
+  "productTotal": 350,
+  "deliveryTotal": 15,
+  "grandTotal": 365,
+  "perShop": [
+    { "shopId","shopName","subtotal": 350, "deliveryFee": 15,
+      "isFreeDelivery": false, "freeDeliveryThreshold": 200 }
   ]
 }
 ```
+**UI:** дар саҳифаи сабад/checkout сатрҳо: «Молҳо: 350 с.», «Расониш: 15 с.» (ё «Ройгон 🎉» агар `isFreeDelivery`), «Ҳамагӣ: 365 с.». Агар чанд мағоза бошад — `perShop`-ро ҷудо нишон деҳ.
 
-**UI:** дар **саҳифаи мағоза** ва **саҳифаи мол** (назди номи фурӯшанда) нишонҳоро ҳамчун чипҳои хурд (icon + label) нишон деҳ. Ҳангоми hover/клик — `description`. Агар `badges` холӣ бошад — чизе нишон надеҳ. Ин занг арзон аст (backend 5 дақиқа кеш мекунад).
-
----
-
-## 4. 💳 Пардохти онлайн
-
-Ҳоло дар checkout корбар усули пардохтро интихоб мекунад. Дастрас: **COD** (пардохт ҳангоми расонидан) ва **MOCK** (корти онлайни озмоишӣ, ҷараёни пурраро санҷиш мекунад). Alif Mobi / Корти Миллӣ дар backend омоданд, вале то гирифтани ҳисоби мерчант ғайрифаъоланд — дар рӯйхат намеоянд.
-
-```
-GET  ${BASE}/api/payments/providers            (public) → { providers: [{ id, label, online, description }] }
-POST ${BASE}/api/payments/initiate             (токен)
-  Body: { "orderId", "provider" }   // provider = "COD" | "MOCK"
-  → { payment: { id, provider, amount, status }, paymentUrl, instructions }
-POST ${BASE}/api/payments/:id/confirm          (public — барои MOCK/webhook)
-  → { message, payment }
-GET  ${BASE}/api/payments/order/:orderId        (токен) → { payment, paymentMethod }
-```
-
-**Ҷараён:**
-1. Дар checkout, пас аз сохтани фармоиш (`POST /api/orders`) `orderId` мегирӣ.
-2. `GET /providers` → усулҳоро нишон деҳ (radio).
-3. **COD:** `initiate` бо `provider: "COD"` → `instructions`-ро нишон деҳ («Ҳангоми расонидан нақд пардохт кунед») → тамом.
-4. **MOCK (онлайн):** `initiate` бо `provider: "MOCK"` → `paymentUrl` мегирӣ. Дар воқеият ин саҳифаи gateway мебуд; барои озмоиш — тугмаи «Пардохтро тасдиқ кун», ки `POST /payments/:id/confirm`-ро мезанад (ё ба `paymentUrl` мегузарӣ). Баъд `status: "PAID"` мешавад → «✅ Пардохт шуд».
-5. Барои нишон додани ҳолат: `GET /payments/order/:orderId`.
-
-**UI:** қадами «Усули пардохт» дар checkout. Пас аз пардохти онлайн — экрани муваффақият. Огоҳиномаи `PAYMENT_PAID` тавассути socket меояд.
+**Муҳим:** дар ҷавоби `POST /api/orders` акнун майдони `deliveryFee` ҳаст ва `totalPrice` аллакай расонишро дар бар мегирад — дар квитансия ҷудо нишон деҳ.
 
 ---
 
-## 5. 🔔 Web Push (PWA) — огоҳинома вақте сайт пӯшида аст
+## 3. 🎯 Молҳои монанд / Тавсияҳо
 
-Огоҳинома дар браузер/телефон ҳатто вақте сайт кушода нест — ройгон, бе app store. Мисли Telegram ба системаи notification пайваст аст.
-
+Endpoint аллакай дар backend ҳаст — танҳо дар frontend истифода бар:
 ```
-GET  ${BASE}/api/push/vapid-public-key   (public) → { configured, publicKey }
-POST ${BASE}/api/push/subscribe          (токен)  Body: PushSubscription JSON браузер
-POST ${BASE}/api/push/unsubscribe        (токен)  Body: { endpoint }
+GET ${BASE}/api/products/:id/recommendations   (public)   → { recommendations: [Product] }
+```
+Мантиқ: аввал «якҷоя харида шудаанд» (аз фармоишҳо), баъд ҳамон категория. Ҳар `Product` ҳамон сохтори маъмулии мол (бо `images`, `brand`, `category`, баҳо).
+
+**UI:** дар **поёни саҳифаи мол** секцияи «🎯 Молҳои монанд» ё «Инро ҳам гирифтанд» — карусели кортҳои мол. Агар холӣ бошад — секцияро нишон надеҳ.
+
+---
+
+## 4. 🖼️ Расмҳои сабук (Thumbnail)
+
+Акнун ҳар расми мол як нусхаи хурд (`thumbnailUrl`) дорад — барои рӯйхатҳо дар интернети суст. Дар `ProductImage`:
+```json
+{ "id": "uuid", "url": "/uploads/products/...", "thumbnailUrl": "/uploads/products/thumb-..." | null }
 ```
 
-**Ҷараён (стандартии Web Push):**
-1. `service-worker.js`-ро сабт кун (`navigator.serviceWorker.register`).
-2. `GET /vapid-public-key`. Агар `configured: false` — фичаро пинҳон кун.
-3. Иҷозат пурс: `Notification.requestPermission()`.
-4. Обуна шав: `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })`.
-5. Натиҷаро ба `POST /subscribe` фирист (ҳамон объекти `subscription.toJSON()` — `{ endpoint, keys: { p256dh, auth } }`).
-6. Дар service worker `push` event-ро гӯш кун ва `showNotification(title, { body })` кун. Payload: `{ title, body, type?, orderId?, ... }`.
-7. Тугмаи «Ғайрифаъол» → `POST /unsubscribe` бо `endpoint`.
-
-**UI:** дар танзимот тугмаи «🔔 Огоҳиномаҳои браузер». service worker + manifest.json барои PWA лозим.
+**UI:** дар **рӯйхатҳо/гридҳо/карусель** `thumbnailUrl`-ро истифода бар, дар **саҳифаи мол** (расми калон) `url`-ро.
+```ts
+const src = `${BASE}${img.thumbnailUrl || img.url}`; // расмҳои кӯҳна thumbnailUrl надоранд → fallback
+```
+Ин рӯйхатҳоро якчанд маротиба сабуктар мекунад.
 
 ---
 
 ## 🔌 Socket — навъҳои нави огоҳинома
 
-Event-и мавҷудаи `new_notification` акнун `type`-ҳои нав дорад. Ҳамаашро дар зангӯла/рӯйхат нишон деҳ; бо клик ба ҷои мувофиқ бар:
-
+Ба `switch (n.type)`-и мавҷуд илова кун:
 ```ts
-socket.on('new_notification', (n) => {
-  // n = { title, content, createdAt, type?, ...meta }
-  switch (n.type) {
-    case 'PRICE_OFFER':      break; // → фурӯшанда: /seller/offers
-    case 'OFFER_ACCEPTED':   break; // → харидор: купон n.couponCode, /offers
-    case 'OFFER_REJECTED':   break; // → харидор: /offers
-    case 'OFFER_COUNTERED':  break; // → харидор: нархи ҷавобӣ n.counterPrice, /offers
-    case 'COUNTER_ACCEPTED': break; // → фурӯшанда: /seller/offers
-    case 'PAYMENT_PAID':     break; // → харидор: /orders/:orderId
-    case 'ORDER_PAID':       break; // → фурӯшанда
-    // мавҷуда: NEW_ORDER | ORDER_STATUS | ABANDONED_CART
-  }
-});
+case 'PRODUCT_QUESTION':  break; // → фурӯшанда: панели «Саволҳо»
+case 'QUESTION_ANSWERED': break; // → харидор: саҳифаи мол, блоки Q&A
+// мавҷуда аз пеш: NEW_ORDER, ORDER_STATUS, ABANDONED_CART,
+// PRICE_OFFER, OFFER_ACCEPTED/REJECTED/COUNTERED, COUNTER_ACCEPTED,
+// PAYMENT_PAID, ORDER_PAID
 ```
+
+---
+
+## 🤖 Таҳти капот (frontend кор намехоҳад)
+
+- **Боти Telegram акнун интерактивӣ**: фурӯшанда пешниҳоди нархро **[✅ Қабул]/[❌ Рад]** ва фармоишро **[✅ Қабул кардам]/[🚚 Фиристодам]** аз худи Telegram идора мекунад; фармонҳои `/orders` (харидор) ва `/today` (ҳисоботи фурӯшанда). Ин ҳамон системаи notification-и мавҷуда аст — frontend танҳо тугмаи «Пайваст ба Telegram»-ро дорад (аз промти пешина).
+- **Ҳисоботи ҳаррӯза**: ҳар бегоҳ бот ба фурӯшандаи пайвастшуда ҷамъбасти рӯзро мефиристад. Худкор.
 
 ---
 
 ## Типҳои TypeScript (илова кун)
 
 ```ts
-type TelegramStatus = { configured: boolean; linked: boolean };
-type TelegramLink = { configured: boolean; code: string; url: string | null; botUsername: string | null };
-
-type OfferStatus = 'PENDING' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
-type Offer = {
+type ProductQuestion = {
   id: string; productId: string;
-  offeredPrice: number; counterPrice: number | null; agreedPrice: number | null;
-  status: OfferStatus; message: string | null; couponCode: string | null;
-  createdAt: string; respondedAt: string | null; expiresAt: string; isExpired: boolean;
-  product: { id: string; name: string; price: number; discountPrice: number | null;
-    isOnDiscount: boolean; image: string | null; shopName: string | null; shopId: string | null } | null;
-  buyer: { id: string; name: string; avatarUrl: string | null } | null;
+  question: string; answer: string | null;
+  answeredAt: string | null; createdAt: string; isAnswered: boolean;
+  askedBy: { id: string; name: string } | null;
+  product?: { id: string; name: string; image: string | null }; // танҳо дар /pending
 };
 
-type TrustBadge = { id: string; label: string; icon: string; description: string };
-type TrustResult = {
-  shopId: string;
-  stats: { reviewCount: number; avgRating: number | null; deliveredOrders: number;
-    sellerReplyRate: number | null; avgResponseMinutes: number | null };
-  badges: TrustBadge[];
+type DeliveryQuote = {
+  productTotal: number; deliveryTotal: number; grandTotal: number;
+  perShop: {
+    shopId: string; shopName: string; subtotal: number;
+    deliveryFee: number; isFreeDelivery: boolean; freeDeliveryThreshold: number | null;
+  }[];
 };
 
-type PaymentProvider = { id: string; label: string; online: boolean; description: string };
-type Payment = { id: string; provider: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' };
-type InitiatePaymentResponse = { payment: Payment; paymentUrl: string | null; instructions: string };
+// ProductImage акнун thumbnailUrl дорад:
+type ProductImage = { id: string; url: string; thumbnailUrl: string | null };
 ```
 
 Дизайн ба стили умумии сайт мувофиқ бошад ва дар мобилӣ хуб кор кунад.
 
 ---
 
-## ⚙️ Ёддошт барои backend deploy (муҳим)
+## ⚙️ Ёддошт барои backend / deploy
 
-Ҳамаи endpoint-ҳо **бехатар** кор мекунанд, ҳатто агар калидҳо гузошта нашаванд (`configured: false` бармегардонанд, сайт вайрон намешавад). Барои фаъол кардани фичаҳо, дар **Render → Environment** илова кун:
-
-**Telegram (фичаи 1):**
-```
-TELEGRAM_BOT_TOKEN = <аз @BotFather>
-TELEGRAM_BOT_USERNAME = <ном_бе_@>   # ихтиёрӣ; худкор аз getMe гирифта мешавад
-```
-Ботро дар [@BotFather](https://t.me/BotFather) соз (`/newbot`), токенро гир. Бот тавассути long polling кор мекунад — URL-и оммавӣ лозим нест.
-
-**Web Push (фичаи 5):**
-```
-npx web-push generate-vapid-keys     # як бор иҷро кун
-VAPID_PUBLIC_KEY  = ...
-VAPID_PRIVATE_KEY = ...
-VAPID_SUBJECT     = mailto:admin@bozor.tj   # ихтиёрӣ
-```
-
-**Пардохт (фичаи 4):** `COD` ва `MOCK` бе ҳеҷ калид кор мекунанд. Барои `MOCK` `paymentUrl`-и дуруст: `PUBLIC_BASE_URL = https://bozortj-back.onrender.com` (ихтиёрӣ). Alif/DC вақте ҳисоби мерчант гирифтӣ: `ALIF_MERCHANT_KEY` / `DC_MERCHANT_KEY` (интегратсия дар backend бояд илова шавад).
-
-**Нишонҳои эътимод (фичаи 3):** ҳеҷ калид намехоҳад — фавран кор мекунад.
-
-Push ба `main` кофист — Render худкор `prisma db push`-ро иҷро мекунад, пас ҷадвалҳо/майдонҳои нав (`PriceOffer`, `PushSubscription`, `Payment`, `telegramChatId`, `Coupon.assignedUserId`, `Order.paymentMethod`) худкор татбиқ мешаванд.
+- **Тавсия — keep-alive (муҳим!):** Render дар free tier пас аз ~15 дақиқа хоб меравад ва боти Telegram қатъ мешавад. Дар [UptimeRobot](https://uptimerobot.com) (ройгон) як монитор соз, ки ҳар 5 дақиқа `https://bozortj-back.onrender.com/health`-ро занад — сервер бедор мемонад ва бот доимо кор мекунад.
+- Ҳеҷ калиди нав барои ин 4 фича лозим нест — фавран кор мекунанд.
+- Ихтиёрӣ: `SUMMARY_HOUR_UTC` (пешфарз 15 = ~20:00 дар Тоҷикистон) — вақти ҳисоботи ҳаррӯзаи Telegram.
+- Push ба `main` кофист — Render `prisma db push`-ро худкор иҷро мекунад, пас майдонҳои нав (`ShopProfile.deliveryFee/freeDeliveryThreshold`, `Order.deliveryFee`, `ProductImage.thumbnailUrl`, ҷадвали `ProductQuestion`) татбиқ мешаванд.
