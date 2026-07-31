@@ -78,7 +78,10 @@ export const updateShopSettings = async (req: any, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (req.user.role !== 'SELLER') return res.status(403).json({ message: 'Only sellers can modify shop settings' });
 
-    const { autoReplyText, autoReplyEnabled, deliveryFee, freeDeliveryThreshold } = req.body;
+    const {
+      autoReplyText, autoReplyEnabled, deliveryFee, freeDeliveryThreshold,
+      allowPickup, pickupAddress, installmentEnabled, installmentMonths
+    } = req.body;
 
     const shop = await prisma.shopProfile.findUnique({
       where: { userId: req.user.id }
@@ -114,14 +117,33 @@ export const updateShopSettings = async (req: any, res: Response) => {
       }
     }
 
+    // Self-pickup settings.
+    const dataPatch: any = {
+      autoReplyText: autoReplyText !== undefined ? autoReplyText : shop.autoReplyText,
+      autoReplyEnabled: autoReplyEnabled !== undefined ? enabledBool : shop.autoReplyEnabled,
+      deliveryFee: deliveryFeeVal,
+      freeDeliveryThreshold: thresholdVal
+    };
+    if (allowPickup !== undefined) dataPatch.allowPickup = allowPickup === 'true' || allowPickup === true;
+    if (pickupAddress !== undefined) dataPatch.pickupAddress = pickupAddress || null;
+
+    // Installments (насия): enable/disable and the list of month plans offered.
+    if (installmentEnabled !== undefined) {
+      dataPatch.installmentEnabled = installmentEnabled === 'true' || installmentEnabled === true;
+    }
+    if (installmentMonths !== undefined) {
+      let months: number[] = [];
+      if (Array.isArray(installmentMonths)) {
+        months = installmentMonths.map((m: any) => parseInt(m)).filter((m: number) => !isNaN(m) && m >= 2);
+      } else if (typeof installmentMonths === 'string' && installmentMonths.trim() !== '') {
+        months = installmentMonths.split(',').map((m) => parseInt(m.trim())).filter((m) => !isNaN(m) && m >= 2);
+      }
+      dataPatch.installmentMonths = Array.from(new Set(months));
+    }
+
     const updatedShop = await prisma.shopProfile.update({
       where: { id: shop.id },
-      data: {
-        autoReplyText: autoReplyText !== undefined ? autoReplyText : shop.autoReplyText,
-        autoReplyEnabled: autoReplyEnabled !== undefined ? enabledBool : shop.autoReplyEnabled,
-        deliveryFee: deliveryFeeVal,
-        freeDeliveryThreshold: thresholdVal
-      }
+      data: dataPatch
     });
 
     return res.status(200).json({

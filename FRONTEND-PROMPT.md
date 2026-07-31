@@ -187,3 +187,196 @@ PUT ${BASE}/api/auth/me   (auth)   { language: "tj" | "ru" }
 8. Нишони «⭐ Таблиғ» дар кортҳои мол.
 
 Огоҳиҳои нав (`PRICE_DROP`, `LOW_STOCK`) танҳо ба зангӯлаи мавҷуда илова мешаванд — сохтори notification яксон аст.
+
+---
+---
+
+# 🆕🆕 Даста-2 — 22 функсияи нав (насия, тӯёна, оптом, курер, видео, AI ва ғ.)
+
+> Ин илова ба болост. Ҳамон қоида: **аз нав насоз**, танҳо ба лоиҳаи мавҷуда илова кун. `BASE = https://bozortj-back.onrender.com`, токен `Authorization: Bearer <token>`, расмҳо `${BASE}{url}`.
+
+Backend боз калон навсозӣ шуд. Инак ҳама:
+
+## 1. 📱 Мағоза дар Telegram (Mini App)
+Як Telegram Web App соз, ки ҳамон API-ро истифода мебарад. Барои ворид шудани корбар:
+```
+POST ${BASE}/api/telegram/miniapp-auth   { initData }   → { token, user }
+```
+`initData` = `window.Telegram.WebApp.initData`. Backend имзоро тафтиш мекунад ва токени JWT медиҳад (агар ҳисоб аллакай ба Telegram пайваст бошад). Агар пайваст набошад → 404 «аввал дар сайт пайваст кун».
+**UI:** саҳифаи `/tg` — сабук, каталог + сабад + фармоиш. Токенро аз `miniapp-auth` гир ва ба ҳамон `lib/api.ts` деҳ.
+
+## 2. 💳 Насия (пардохти бо қисмҳо)
+Фурӯшанда фаъол мекунад:
+```
+PUT ${BASE}/api/shops/settings/auto-reply (SELLER)  { installmentEnabled: true, installmentMonths: "3,6,9" }
+```
+Харидор ҳангоми checkout:
+```
+POST ${BASE}/api/orders  { addressId, installmentMonths: 6, ... }
+→ фармоиш бо paymentMethod=INSTALLMENT + ҷадвали пардохт
+```
+Насия танҳо вақте кор мекунад, ки **ҳамаи мағозаҳои сабад** онро дастгирӣ кунанд. Дар ҷавоби фармоиш `installment: { months, monthlyAmount, totalAmount, nextDueDate }`.
+**UI:** дар checkout, агар мол насия дошта бошад, интихоби «3/6/9 моҳ» + нишондоди «≈ X сомонӣ/моҳ».
+
+## 3. 🔔 «Хабар деҳ, вақте омад» (back-in-stock)
+Вақте мол тамом шуд (`stockQuantity=0`), ба ҷои тугмаи хомӯш:
+```
+POST   ${BASE}/api/products/:id/notify-stock   (BUYER)  → обуна
+DELETE ${BASE}/api/products/:id/notify-stock   (BUYER)
+```
+Мол ки аз нав омад → notification навъи `BACK_IN_STOCK` худкор меояд.
+**UI:** дар саҳифаи моли тамомшуда тугмаи «🔔 Хабар деҳ вақте омад».
+
+## 4. ➕ Обуна ба мағоза (follow)
+```
+POST   ${BASE}/api/shops/:shopId/follow    (BUYER)  → { following, followerCount }
+DELETE ${BASE}/api/shops/:shopId/follow    (BUYER)
+GET    ${BASE}/api/shops/following          (BUYER)  → { shops: [...] }
+GET    ${BASE}/api/shops/:shopId/status     (public) → { online, followerCount, following }
+```
+Мағоза моли нав ё flash sale гузошт → обуначиён notification мегиранд (`NEW_PRODUCT`, `FLASH_SALE`).
+**UI:** дар саҳифаи мағоза тугмаи «➕ Пайгирӣ» + шумораи пайгирон + нуқтаи 🟢/⚪ онлайн.
+
+## 5. 📈 Таърихи нарх
+```
+GET ${BASE}/api/products/:id/price-history   (public)  → { history: [{ price, createdAt }] }
+```
+**UI:** дар саҳифаи мол графики хурди хаттӣ (нарх дар вақт). Агар <2 нуқта — нишон надеҳ.
+
+## 6. 🎁 Харидани якҷоя (bundle)
+```
+GET    ${BASE}/api/bundles/product/:productId  (public)  → { bundles: [{ name, discountPercent, items[], pricing }] }
+GET    ${BASE}/api/bundles/shop/:shopId        (public)
+POST   ${BASE}/api/bundles   (SELLER)  { name, discountPercent, productIds: [id1, id2] }
+DELETE ${BASE}/api/bundles/:id  (SELLER)
+```
+`pricing = { originalTotal, bundlePrice, savings }`.
+**UI:** дар саҳифаи мол блоки «🎁 Якҷоя арзонтар» бо нархи маҷмӯа ва тугмаи «Ҳамаро ба сабад». Дар панели фурӯшанда — созандаи маҷмӯа.
+
+## 7. 🔥 Молҳои тренд
+```
+GET ${BASE}/api/products/discovery/trending   (public)  → { products: [...] }
+```
+Аз рӯи фаъолнокии 7 рӯзи охир (дидан + фурӯш).
+**UI:** дар саҳифаи асосӣ блоки «🔥 Тренди ҳафта».
+
+## 8. 📥 Экспорт/Импорти Excel (CSV)
+```
+GET  ${BASE}/api/seller/export/orders   (SELLER)  → файли CSV (боркунӣ)
+POST ${BASE}/api/seller/import/products (SELLER)  multipart "file" (CSV)
+     Сутунҳо: name, description, price, stockQuantity, brand, [size], [discountPrice]
+     → { importedCount, errorCount, errors: [{row, message}] }
+```
+**UI:** дар панели фурӯшанда тугмаи «⬇️ Экспорти фармоишҳо (Excel)» ва «⬆️ Импорти молҳо аз CSV» + намунаи файл барои зеркашӣ.
+
+## 9. 🟢 Фурӯшанда онлайн
+Ниг. №4 (`/shops/:shopId/status`). Инчунин socket event: `presence_update { userId, online }`. Дар сокет ба `presence_update` гӯш кун ва нуқтаи онлайнро live навсозӣ кун.
+
+## 10. 💬 Ҷавоби тайёри AI (фурӯшанда)
+```
+POST ${BASE}/api/assistant/suggest-reply  (SELLER)  { questionId }  ё  { reviewId }
+→ { reply: "матни тайёр" }
+```
+**UI:** назди ҳар савол/тақриз тугмаи «✨ Ҷавоби AI» → матнро ба майдон гузор, фурӯшанда таҳрир карда «Фиристодан».
+
+## 11. 💍 Рӯйхати тӯёна (gift registry)
+```
+POST   ${BASE}/api/registries   (auth)  { title, eventDate? }  → { registry: { shareCode, ... } }
+GET    ${BASE}/api/registries/mine   (auth)
+POST   ${BASE}/api/registries/:id/items   (owner)  { productId, quantityWanted? }
+DELETE ${BASE}/api/registries/:id/items/:itemId   (owner)
+GET    ${BASE}/api/registries/:shareCode   (public)  → намоиши меҳмон
+POST   ${BASE}/api/registries/:shareCode/items/:itemId/purchase   (public)  { quantity? }
+```
+Ҳар айтем `quantityWanted` ва `quantityPurchased` дорад.
+**UI:** саҳифаи `/registry` — сохтани рӯйхат, илова кардани молҳо, линки мубодила. Саҳифаи оммавии `/registry/:shareCode` — меҳмон мебинад чӣ лозим аст ва «Ман инро мехарам» → `purchase` (нишони ✅ «харида шуд»).
+
+## 12. 📦 Оптом (нархи яклухт)
+```
+GET ${BASE}/api/products/:id/wholesale   (public)  → { tiers: [{ minQty, price }] }
+PUT ${BASE}/api/products/:id/wholesale    (SELLER)  { tiers: [{ minQty: 10, price: 42 }] }
+```
+Дар checkout нархи оптом **худкор** татбиқ мешавад (агар шумораи мол дар сабад >= minQty).
+**UI:** дар саҳифаи мол ҷадвали «Оптом: аз 10 дона — 42 с., аз 50 — 38 с.». Дар форми мол — муҳаррири зинаҳо.
+
+## 13. 🏷 QR-коди мағоза
+```
+GET ${BASE}/api/seller/qr   (SELLER)  → { url, qrDataUrl (PNG base64) }
+```
+**UI:** дар панели фурӯшанда «QR-коди мағоза» → нишон додани расм + тугмаи «Чоп/Зеркашӣ».
+
+## 14. 📸 Ҷустуҷӯ бо расм
+Аллакай тайёр: `POST ${BASE}/api/assistant/photo` (multipart "photo" ё `{ imageBase64 }`) → `{ reply, products }`.
+**UI:** дар ҷустуҷӯ иконаи 📷 → боркунии акс → нишон додани молҳои ёфтшуда.
+
+## 15. 🌐 Тарҷумаи худкори мол
+Ҳангоми сохтани мол, backend худкор `nameRu`/`descriptionRu` тавлид мекунад (агар GROQ фаъол бошад). Дастӣ низ:
+```
+POST ${BASE}/api/assistant/translate  (SELLER)  { name, description, target: "ru" | "tj" }  → { name, description }
+```
+Дар ҷавоби мол майдонҳои `nameRu`, `descriptionRu` ҳастанд.
+**UI:** агар забони корбар русӣ бошад ва `nameRu` мавҷуд, онро нишон деҳ. Дар форми мол тугмаи «Тарҷума ба русӣ».
+
+## 16. 🤝 Савдои худкор (auto-accept)
+Фурӯшанда ҳадди ақали нархро мемонад:
+```
+PUT ${BASE}/api/products/:id  (SELLER)  ... + minAcceptablePrice: 40
+```
+Пешниҳоди харидор >= ин → **фавран** қабул, купон дарҳол. Ҷавоби `POST /api/offers`: `{ autoAccepted: true, couponCode }`.
+**UI:** дар форми мол майдони «Нархи ҳадди ақали худкор». Дар савдо, агар `autoAccepted` — дарҳол «✅ Қабул шуд! Коди купон: ...».
+
+## 17. 🏪 Худгирӣ (pickup)
+Фурӯшанда:
+```
+PUT ${BASE}/api/shops/settings/auto-reply  (SELLER)  { allowPickup: true, pickupAddress: "..." }
+```
+Харидор дар checkout:
+```
+POST ${BASE}/api/orders  { deliveryType: "PICKUP" }   // addressId лозим нест, пули расониш = 0
+```
+**UI:** дар checkout интихоби «🚚 Расониш / 🏪 Худам мегирам». Агар PICKUP — суроғаи мағозаро нишон деҳ, пули расонишро гир.
+
+## 18. 🛵 Модули курер
+Роли нав: **COURIER**.
+```
+POST ${BASE}/api/couriers/register   (public)  { name, email, phone, password }  → { token, user }
+GET  ${BASE}/api/couriers             (SELLER/ADMIN)  → { couriers: [{id, name, phone}] }
+POST ${BASE}/api/orders/:id/assign-courier  (SELLER/ADMIN)  { courierId }
+GET  ${BASE}/api/courier/deliveries   (COURIER)  → { deliveries: [...] }
+PUT  ${BASE}/api/courier/deliveries/:id/status  (COURIER)  { status: "SHIPPED" | "DELIVERED" }
+```
+**UI:** саҳифаи вуруд/сабти курер; панели курер бо рӯйхати расонишҳо ва тугмаҳои «Гирифтам»→«Супоридам». Дар фармоиши фурӯшанда — интихоби курер.
+
+## 19. 📣 Канали худкори Telegram
+Ҳангоми flash sale ё таблиғи нав, бот худкор ба канали оммавӣ пост мекунад (env `TELEGRAM_CHANNEL_ID`). **Кори frontend нест** — фақат каналро дар сайт таблиғ кун («Ба канали мо ҳамроҳ шавед»).
+
+## 20. 🎬 Лентаи видео (TikTok-style)
+```
+GET    ${BASE}/api/videos/feed              (public)  → { feed: [{ url, product }] }
+GET    ${BASE}/api/products/:id/videos       (public)
+POST   ${BASE}/api/products/:id/videos       (SELLER)  multipart "video" (mp4/mov/webm, ≤50MB)
+DELETE ${BASE}/api/products/:id/videos/:videoId  (SELLER)
+```
+**UI:** саҳифаи `/reels` — лентаи амудии full-screen (swipe боло/поён), ҳар видео бо корти мол + тугмаи «Ба сабад». Дар форми мол — боркунии видео.
+
+## 21. ⬆️ Импорти молҳо аз CSV
+Ниг. №8 (`POST /api/seller/import/products`).
+
+## 22. 🕐 Харитаи гармии фурӯш
+```
+GET ${BASE}/api/analytics/heatmap  (SELLER)  → { dayLabels[7], counts[7][24], revenue[7][24], peak }
+```
+`counts[рӯз][соат]` = шумораи фармоишҳо. `dayLabels[0]`=Якшанбе.
+**UI:** дар аналитика ҷадвали 7×24 heatmap (ранги пурратар = фаъолтар) + «Вақти авҷ: {peak}».
+
+---
+
+### Хулосаи даста-2 — чӣ илова кунӣ
+- Checkout: интихоби **насия**, **худгирӣ**, ҷадвали оптом.
+- Саҳифаи мол: **таърихи нарх**, **маҷмӯаҳо**, **оптом**, **видео**, тугмаи «🔔 хабар деҳ».
+- Саҳифаи мағоза: **пайгирӣ** + онлайн 🟢.
+- Саҳифаҳои нав: `/reels` (видео), `/registry` (тӯёна), `/tg` (Telegram Mini App), панели **курер**.
+- Панели фурӯшанда: экспорт/импорти CSV, QR, муҳаррири оптом, `minAcceptablePrice`, ҷавоби AI, heatmap, тарҷума.
+- Ҷустуҷӯ: 📷 бо расм; 🔥 тренд дар асосӣ.
+
+Огоҳиҳои нав: `BACK_IN_STOCK`, `NEW_PRODUCT`, `FLASH_SALE`, `OFFER_AUTO_ACCEPTED`, `COURIER_ASSIGNED` — ҳама ба ҳамон зангӯла.

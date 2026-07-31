@@ -3,7 +3,9 @@ import multer from 'multer';
 import {
   assistantChat,
   assistantPhoto,
-  assistantGenerateDescription
+  assistantGenerateDescription,
+  assistantTranslate,
+  assistantSuggestReply
 } from '../controllers/assistantController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -27,5 +29,9 @@ router.post(
   authorize(['SELLER']),
   assistantGenerateDescription
 );
+
+// Seller: AI translate (tj <-> ru) and suggested reply drafting
+router.post('/translate', authenticate, authorize(['SELLER']), assistantTranslate);
+router.post('/suggest-reply', authenticate, authorize(['SELLER']), assistantSuggestReply);
 
 export default router;

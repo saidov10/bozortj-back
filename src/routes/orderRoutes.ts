@@ -7,6 +7,7 @@ import {
   getOrderTimeline,
   getDeliveryQuote
 } from '../controllers/orderController';
+import { assignCourier } from '../controllers/courierController';
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
@@ -19,5 +20,6 @@ router.get('/', getOrders);
 router.get('/:id', getOrderById);
 router.get('/:id/timeline', getOrderTimeline);
 router.put('/:id/status', authorize(['SELLER', 'ADMIN']), updateOrderStatus);
+router.post('/:id/assign-courier', authorize(['SELLER', 'ADMIN']), assignCourier);
 
 export default router;

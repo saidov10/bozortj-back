@@ -383,6 +383,70 @@ export const generateProductDescription = async (input: {
   }
 };
 
+// 🌐 Translate a product's name + description between Tajik and Russian, so a
+// seller writes once and the listing is instantly bilingual.
+export const translateProduct = async (input: {
+  name: string;
+  description: string;
+  target: 'ru' | 'tj';
+}): Promise<{ name: string; description: string }> => {
+  const targetName = input.target === 'ru' ? 'русӣ (Russian)' : 'тоҷикӣ (Tajik)';
+  try {
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Ту тарҷумони маҳсулоти онлайн-мағоза ҳастӣ. Матни зерро ба забони ${targetName} тарҷума кун. Табиӣ ва фурӯшанда тарҷума кун, на калима ба калима. Ном ва бренд/андозаро нигоҳ дор. Ҷавобро ҲАТМАН танҳо дар формати JSON баргардон: {"name": "...", "description": "..."}`
+        },
+        { role: 'user', content: `Ном: ${input.name}\nТавсиф: ${input.description}` }
+      ]
+    });
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      description: typeof parsed.description === 'string' ? parsed.description : ''
+    };
+  } catch (err) {
+    console.error('translateProduct failed:', err);
+    return { name: '', description: '' };
+  }
+};
+
+// 💬 Draft a polite, ready-to-send seller reply to a buyer's question or review.
+// The seller reviews it and hits "send" — turning slow replies into instant ones.
+export const suggestSellerReply = async (input: {
+  kind: 'question' | 'review';
+  productName: string;
+  text: string;
+  rating?: number;
+}): Promise<{ reply: string }> => {
+  const context =
+    input.kind === 'review'
+      ? `Харидор ба маҳсулоти "${input.productName}" тақриз навишт${input.rating ? ` (${input.rating}/5)` : ''}: "${input.text}"`
+      : `Харидор дар бораи маҳсулоти "${input.productName}" пурсид: "${input.text}"`;
+  try {
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 512,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Ту ба фурӯшанда кӯмак мекунӣ, ки ба харидор ботамкин ва дӯстона ҷавоб диҳад. Як ҷавоби кӯтоҳи 1-3 ҷумлагӣ бо забони тоҷикӣ навис. Агар тақризи манфӣ бошад, узр пурс ва роҳи ҳалро пешниҳод кун. Танҳо матни ҷавобро баргардон — бе сарлавҳа, бе эмодзии зиёд.'
+        },
+        { role: 'user', content: context }
+      ]
+    });
+    return { reply: (completion.choices[0]?.message?.content || '').trim() };
+  } catch (err) {
+    console.error('suggestSellerReply failed:', err);
+    return { reply: '' };
+  }
+};
+
 export interface ReviewSummary {
   pros: string[];
   cons: string[];

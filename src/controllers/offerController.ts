@@ -7,6 +7,7 @@ import { buildOfferButtons } from '../services/telegramService';
 import {
   OFFER_TTL_HOURS,
   effectiveUnitPrice,
+  issueDealCoupon,
   acceptOffer as acceptOfferSvc,
   rejectOffer as rejectOfferSvc,
   counterOffer as counterOfferSvc,
@@ -104,6 +105,38 @@ export const createOffer = async (req: AuthRequest, res: Response) => {
       },
       include: offerInclude
     });
+
+    // ⚡ Auto-accept: if the seller set a floor and the offer meets it, deal is
+    // closed instantly — buyer gets the coupon without waiting for the seller.
+    if (product.minAcceptablePrice != null && price >= product.minAcceptablePrice) {
+      const code = await issueDealCoupon({
+        offerId: offer.id,
+        buyerId: req.user.id,
+        shopId: product.shop.id,
+        originalUnitPrice: current,
+        agreedPrice: price
+      });
+      await createNotification(
+        req.user.id,
+        '✅ Пешниҳоди шумо фавран қабул шуд!',
+        `Барои "${product.name}" нархи ${price} с. тасдиқ шуд. Дар харид коди «${code}»-ро истифода баред.`,
+        { type: 'OFFER_ACCEPTED', offerId: offer.id, couponCode: code, productId }
+      );
+      // Let the seller know a deal auto-closed (no action needed).
+      await createNotification(
+        product.shop.userId,
+        '🤝 Савдо худкор баста шуд',
+        `Барои "${product.name}" харидор ${price} с. пешниҳод кард ва он худкор қабул шуд.`,
+        { type: 'OFFER_AUTO_ACCEPTED', offerId: offer.id, productId }
+      );
+      const accepted = await prisma.priceOffer.findUnique({ where: { id: offer.id }, include: offerInclude });
+      return res.status(201).json({
+        message: 'Пешниҳоди шумо фавран қабул шуд',
+        autoAccepted: true,
+        couponCode: code,
+        offer: shapeOffer(accepted)
+      });
+    }
 
     // Notify the seller — with inline Accept/Reject buttons on Telegram.
     await createNotification(

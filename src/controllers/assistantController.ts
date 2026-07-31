@@ -4,9 +4,12 @@ import {
   chatWithAssistant,
   chatWithAssistantPhoto,
   generateProductDescription,
+  translateProduct,
+  suggestSellerReply,
   isAssistantConfigured,
   ImageMediaType
 } from '../services/assistantService';
+import prisma from '../config/prisma';
 
 const notConfigured = (res: Response) =>
   res.status(503).json({ message: 'AI assistant is not configured. Set GROQ_API_KEY on the server.' });
@@ -118,5 +121,79 @@ export const assistantGenerateDescription = async (req: AuthRequest, res: Respon
   } catch (error: any) {
     console.error('Assistant description error:', error);
     return res.status(500).json({ message: 'Failed to generate description', error: error?.message });
+  }
+};
+
+// POST /api/assistant/translate  (seller only)
+// Body: { name, description, target: 'ru' | 'tj' }  →  { name, description }
+export const assistantTranslate = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isAssistantConfigured()) return notConfigured(res);
+    const { name, description, target } = req.body as { name?: string; description?: string; target?: string };
+    if (!name && !description) {
+      return res.status(400).json({ message: 'Provide name and/or description to translate' });
+    }
+    const tgt = target === 'tj' ? 'tj' : 'ru';
+    const result = await translateProduct({
+      name: (name || '').trim(),
+      description: (description || '').trim(),
+      target: tgt
+    });
+    if (!result.name && !result.description) {
+      return res.status(502).json({ message: 'Could not translate. Try again.' });
+    }
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Assistant translate error:', error);
+    return res.status(500).json({ message: 'Failed to translate', error: error?.message });
+  }
+};
+
+// POST /api/assistant/suggest-reply  (seller only)
+// Body: { questionId } OR { reviewId } OR { kind, productName, text, rating }
+// Returns a ready-to-send draft reply for the seller.
+export const assistantSuggestReply = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isAssistantConfigured()) return notConfigured(res);
+
+    let kind: 'question' | 'review' | undefined;
+    let productName = '';
+    let text = '';
+    let rating: number | undefined;
+
+    if (req.body.questionId) {
+      const q = await prisma.productQuestion.findUnique({
+        where: { id: req.body.questionId },
+        include: { product: { select: { name: true } } }
+      });
+      if (!q) return res.status(404).json({ message: 'Question not found' });
+      kind = 'question';
+      productName = q.product.name;
+      text = q.question;
+    } else if (req.body.reviewId) {
+      const rv = await prisma.review.findUnique({
+        where: { id: req.body.reviewId },
+        include: { product: { select: { name: true } } }
+      });
+      if (!rv) return res.status(404).json({ message: 'Review not found' });
+      kind = 'review';
+      productName = rv.product.name;
+      text = rv.comment || '';
+      rating = rv.rating;
+    } else {
+      kind = req.body.kind === 'review' ? 'review' : 'question';
+      productName = (req.body.productName || '').trim();
+      text = (req.body.text || '').trim();
+      rating = req.body.rating ? parseInt(req.body.rating) : undefined;
+    }
+
+    if (!text) return res.status(400).json({ message: 'Nothing to reply to' });
+
+    const result = await suggestSellerReply({ kind: kind!, productName, text, rating });
+    if (!result.reply) return res.status(502).json({ message: 'Could not draft a reply. Try again.' });
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Assistant suggest-reply error:', error);
+    return res.status(500).json({ message: 'Failed to draft reply', error: error?.message });
   }
 };

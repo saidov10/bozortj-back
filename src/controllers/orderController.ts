@@ -49,16 +49,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (req.user.role !== 'BUYER') return res.status(403).json({ message: 'Only buyers can place orders' });
 
-    const { couponCode, addressId } = req.body;
+    const { couponCode, addressId, deliveryType: rawDeliveryType, installmentMonths } = req.body;
 
-    if (!addressId) {
+    // Fulfilment method — home delivery (needs an address) or self-pickup.
+    const deliveryType = rawDeliveryType === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
+
+    if (deliveryType === 'DELIVERY' && !addressId) {
       return res.status(400).json({ message: 'Delivery address is required' });
     }
 
-    // Verify address
-    const address = await prisma.address.findUnique({ where: { id: addressId } });
-    if (!address || address.userId !== req.user.id) {
-      return res.status(400).json({ message: 'Invalid or unauthorized delivery address' });
+    // Verify address when delivering
+    let address = null;
+    if (addressId) {
+      address = await prisma.address.findUnique({ where: { id: addressId } });
+      if (!address || address.userId !== req.user.id) {
+        return res.status(400).json({ message: 'Invalid or unauthorized delivery address' });
+      }
     }
 
     // Fetch buyer cart items
@@ -82,11 +88,36 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       const isOnDiscount = v.product.isOnDiscount;
       const basePrice = v.price !== null ? v.price : v.product.price;
       const discountPrice = v.discountPrice !== null ? v.discountPrice : v.product.discountPrice;
-      
+
       if (isOnDiscount && discountPrice !== null) {
         return discountPrice;
       }
       return basePrice;
+    };
+
+    // Wholesale (оптом): load tiers for all products in the cart, then for each
+    // line pick the best unit price for its quantity — the lower of the normal
+    // active price and the best-qualifying wholesale tier.
+    const productIds = Array.from(new Set(cartItems.map((i) => i.variant.productId)));
+    const tiers = await prisma.wholesaleTier.findMany({
+      where: { productId: { in: productIds } },
+      orderBy: { minQty: 'asc' }
+    });
+    const tiersByProduct = new Map<string, { minQty: number; price: number }[]>();
+    tiers.forEach((t) => {
+      const arr = tiersByProduct.get(t.productId) || [];
+      arr.push({ minQty: t.minQty, price: t.price });
+      tiersByProduct.set(t.productId, arr);
+    });
+    // Unit price for a cart line, factoring in quantity-based wholesale pricing.
+    const lineUnitPrice = (item: any): number => {
+      const active = getActivePrice(item.variant);
+      const productTiers = tiersByProduct.get(item.variant.productId) || [];
+      let best = active;
+      for (const tier of productTiers) {
+        if (item.quantity >= tier.minQty && tier.price < best) best = tier.price;
+      }
+      return best;
     };
 
     // Verify stock availability
@@ -103,7 +134,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     const shopPrices: Record<string, number> = {};
 
     cartItems.forEach((item) => {
-      const activePrice = getActivePrice(item.variant);
+      const activePrice = lineUnitPrice(item);
       const itemTotal = activePrice * item.quantity;
       originalTotal += itemTotal;
 
@@ -173,22 +204,47 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     // Delivery fee: each shop sets its own flat fee, waived when that shop's
     // subtotal reaches its free-delivery threshold. Charged on top of the
     // (possibly discounted) product total.
+    // Self-pickup waives all delivery fees; otherwise each shop charges its own.
     let deliveryTotal = 0;
-    const shopIds = Object.keys(shopPrices);
-    if (shopIds.length > 0) {
-      const shops = await prisma.shopProfile.findMany({
-        where: { id: { in: shopIds } },
-        select: { id: true, deliveryFee: true, freeDeliveryThreshold: true }
-      });
-      for (const shop of shops) {
-        const subtotal = shopPrices[shop.id] || 0;
-        const qualifiesFree =
-          shop.freeDeliveryThreshold != null && subtotal >= shop.freeDeliveryThreshold;
-        if (!qualifiesFree) deliveryTotal += shop.deliveryFee;
+    if (deliveryType === 'DELIVERY') {
+      const shopIds = Object.keys(shopPrices);
+      if (shopIds.length > 0) {
+        const shops = await prisma.shopProfile.findMany({
+          where: { id: { in: shopIds } },
+          select: { id: true, deliveryFee: true, freeDeliveryThreshold: true }
+        });
+        for (const shop of shops) {
+          const subtotal = shopPrices[shop.id] || 0;
+          const qualifiesFree =
+            shop.freeDeliveryThreshold != null && subtotal >= shop.freeDeliveryThreshold;
+          if (!qualifiesFree) deliveryTotal += shop.deliveryFee;
+        }
       }
     }
     deliveryTotal = +deliveryTotal.toFixed(2);
     finalTotal = +(finalTotal + deliveryTotal).toFixed(2);
+
+    // Installments (насия): if requested, validate the plan against the shops in
+    // the cart. All shops must enable installments and offer the chosen term.
+    let installmentPlanMonths: number | null = null;
+    if (installmentMonths !== undefined && installmentMonths !== null && installmentMonths !== '') {
+      const months = parseInt(installmentMonths);
+      if (isNaN(months) || months < 2) {
+        return res.status(400).json({ message: 'installmentMonths must be a whole number >= 2' });
+      }
+      const shopIds = Object.keys(shopPrices);
+      const shops = await prisma.shopProfile.findMany({
+        where: { id: { in: shopIds } },
+        select: { installmentEnabled: true, installmentMonths: true }
+      });
+      const allSupport = shops.length > 0 && shops.every(
+        (s) => s.installmentEnabled && s.installmentMonths.includes(months)
+      );
+      if (!allSupport) {
+        return res.status(400).json({ message: 'Installments are not available for all items in this order' });
+      }
+      installmentPlanMonths = months;
+    }
 
     // Execute order creation transaction
     const order = await prisma.$transaction(async (tx) => {
@@ -199,10 +255,28 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           status: 'PENDING',
           totalPrice: finalTotal,
           deliveryFee: deliveryTotal,
+          deliveryType,
+          paymentMethod: installmentPlanMonths ? 'INSTALLMENT' : 'COD',
           couponId: appliedCoupon ? appliedCoupon.id : null,
-          addressId
+          addressId: addressId || null
         }
       });
+
+      // Attach the installment schedule when paying in monthly parts.
+      if (installmentPlanMonths) {
+        const monthly = +(finalTotal / installmentPlanMonths).toFixed(2);
+        const nextDue = new Date();
+        nextDue.setMonth(nextDue.getMonth() + 1);
+        await tx.installmentPlan.create({
+          data: {
+            orderId: newOrder.id,
+            months: installmentPlanMonths,
+            monthlyAmount: monthly,
+            totalAmount: finalTotal,
+            nextDueDate: nextDue
+          }
+        });
+      }
 
       // Record initial status in the tracking timeline
       await tx.orderStatusHistory.create({
@@ -215,7 +289,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
 
       // 2. Create Order Items & decrease stocks
       for (const item of cartItems) {
-        const activePrice = getActivePrice(item.variant);
+        const activePrice = lineUnitPrice(item);
 
         await tx.orderItem.create({
           data: {

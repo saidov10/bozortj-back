@@ -11,6 +11,15 @@ interface AuthenticatedSocket extends Socket {
 
 let ioInstance: Server | null = null;
 
+// Live presence: how many active socket connections each user has. A user is
+// "online" while this count is > 0. Used to show a green dot on a seller's shop
+// so buyers know they'll get a fast reply.
+const connectionCounts = new Map<string, number>();
+
+export const isUserOnline = (userId: string): boolean => (connectionCounts.get(userId) || 0) > 0;
+
+export const getOnlineUserIds = (): string[] => Array.from(connectionCounts.keys());
+
 export const initChatSocket = (server: any) => {
   const io = new Server(server, {
     cors: {
@@ -82,6 +91,12 @@ export const initChatSocket = (server: any) => {
 
     const userId = socket.user.id;
     console.log(`User connected to Chat WebSocket: ${socket.user.name} (${userId})`);
+
+    // Track presence and let others know this user just came online.
+    connectionCounts.set(userId, (connectionCounts.get(userId) || 0) + 1);
+    if (connectionCounts.get(userId) === 1) {
+      io.emit('presence_update', { userId, online: true });
+    }
 
     // Join room named after user's ID to handle multiple connections
     socket.join(userId);
@@ -191,6 +206,14 @@ export const initChatSocket = (server: any) => {
     socket.on('disconnect', () => {
       console.log(`User disconnected from Chat WebSocket: ${socket.user?.name} (${userId})`);
       socket.leave(userId);
+      // Update presence; announce offline only when the last connection closes.
+      const remaining = (connectionCounts.get(userId) || 1) - 1;
+      if (remaining <= 0) {
+        connectionCounts.delete(userId);
+        io.emit('presence_update', { userId, online: false });
+      } else {
+        connectionCounts.set(userId, remaining);
+      }
       viewedProducts.forEach((productId) => {
         socket.leave(productRoom(productId));
         broadcastViewerCount(productId);

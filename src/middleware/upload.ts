@@ -21,6 +21,8 @@ const storage = multer.diskStorage({
       dest = 'uploads/reviews/';
     } else if (file.fieldname === 'refundImages') {
       dest = 'uploads/refunds/';
+    } else if (file.fieldname === 'video') {
+      dest = 'uploads/videos/';
     }
     ensureDirExists(dest);
     cb(null, dest);
@@ -64,3 +66,28 @@ export const uploadReviewImages = upload.array('reviewImages', 5);
 
 // Multiple refund proof images upload handler (up to 5 photos)
 export const uploadRefundImages = upload.array('refundImages', 5);
+
+// ---- Short product video (TikTok-style feed) ----
+const videoFilter = (req: any, file: any, cb: any) => {
+  const allowed = /mp4|mov|webm|quicktime/;
+  const ext = /mp4|mov|webm/.test(path.extname(file.originalname).toLowerCase());
+  const mime = allowed.test(file.mimetype);
+  if (ext || mime) return cb(null, true);
+  cb(new Error('Only video files (mp4, mov, webm) are allowed!'));
+};
+
+const videoUpload = multer({
+  storage,
+  fileFilter: videoFilter,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB per short video
+});
+
+export const uploadProductVideo = videoUpload.single('video');
+
+// ---- CSV upload for bulk product import (kept in memory for parsing) ----
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+export const uploadCsv = csvUpload.single('file');

@@ -14,8 +14,87 @@ import { sellerAdvanceOrderStatus, getSellerDailySummary, getBuyerRecentOrders }
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const API = `https://api.telegram.org/bot${TOKEN}`;
+// Public channel/group the bot auto-posts new flash sales & promoted products to
+// (e.g. "@bozortj" or a numeric chat id). Free, recurring traffic.
+const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
+// Public site URL used to build deep links in channel posts.
+const SITE_URL = process.env.PUBLIC_SITE_URL || 'https://bozor.tj';
 
 export const isTelegramConfigured = (): boolean => Boolean(TOKEN);
+
+// Validate a Telegram Mini App (Web App) initData string per Telegram's spec:
+// the secret key is HMAC_SHA256(bot_token) keyed by the literal "WebAppData",
+// and the data-check-string is the sorted "key=value" pairs (minus `hash`)
+// joined by newlines. Returns the embedded Telegram user, or null if invalid.
+export const validateMiniAppInitData = (
+  initData: string
+): { telegramId: string; firstName: string; username?: string } | null => {
+  if (!isTelegramConfigured() || !initData) return null;
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    if (!hash) return null;
+    params.delete('hash');
+
+    const dataCheckString = Array.from(params.entries())
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join('\n');
+
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(TOKEN).digest();
+    const computed = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    if (computed !== hash) return null;
+
+    const userJson = params.get('user');
+    if (!userJson) return null;
+    const user = JSON.parse(userJson);
+    return {
+      telegramId: String(user.id),
+      firstName: user.first_name || 'Telegram User',
+      username: user.username
+    };
+  } catch (err) {
+    console.error('validateMiniAppInitData failed:', err);
+    return null;
+  }
+};
+
+// Cross-post an announcement (new flash sale, promoted product) to the public
+// channel. Sends a photo with caption when an image is available, else text.
+// Best-effort and no-op when the token or channel id is unset.
+export const postToChannel = async (params: {
+  title: string;
+  body: string;
+  productId?: string;
+  imageUrl?: string | null;
+}): Promise<void> => {
+  if (!isTelegramConfigured() || !CHANNEL_ID) return;
+  try {
+    const link = params.productId ? `\n\n🛒 ${SITE_URL}/products/${params.productId}` : '';
+    const caption = `<b>${escapeHtml(params.title)}</b>\n${escapeHtml(params.body)}${link}`;
+    const image = params.imageUrl
+      ? params.imageUrl.startsWith('http')
+        ? params.imageUrl
+        : `${SITE_URL}${params.imageUrl}`
+      : null;
+
+    if (image) {
+      await fetch(`${API}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHANNEL_ID, photo: image, caption, parse_mode: 'HTML' })
+      });
+    } else {
+      await fetch(`${API}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHANNEL_ID, text: caption, parse_mode: 'HTML' })
+      });
+    }
+  } catch (err) {
+    console.error('postToChannel failed:', err);
+  }
+};
 
 // Inline keyboard types + helpers used by notification callers.
 export interface InlineButton {

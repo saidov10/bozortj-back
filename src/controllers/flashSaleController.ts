@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { notifyShopFollowers } from '../services/engagementService';
+import { postToChannel } from '../services/telegramService';
 
 const flashSaleProductInclude = {
   product: {
@@ -97,6 +99,22 @@ export const createFlashSale = async (req: AuthRequest, res: Response) => {
         stockLimit: limit
       },
       include: flashSaleProductInclude
+    });
+
+    // Announce the sale: alert the shop's followers and cross-post to the public
+    // Telegram channel (both best-effort, off the response path).
+    const image = flashSale.product?.images?.[0]?.url ?? null;
+    void notifyShopFollowers(
+      shop.id,
+      `⚡ Flash Sale: ${shop.shopName}`,
+      `«${product.name}» — ${price} с. (пештар ${product.price} с.). Шитоб кунед!`,
+      { type: 'FLASH_SALE', flashSaleId: flashSale.id, productId }
+    );
+    void postToChannel({
+      title: `⚡ Flash Sale — ${product.name}`,
+      body: `Танҳо ${price} сомонӣ (пештар ${product.price} с.) дар мағозаи «${shop.shopName}». Шумораш маҳдуд!`,
+      productId,
+      imageUrl: image
     });
 
     return res.status(201).json({ message: 'Flash sale created', flashSale: shapeFlashSale(flashSale) });

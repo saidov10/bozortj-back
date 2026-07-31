@@ -26,6 +26,11 @@ import telegramRoutes from './routes/telegramRoutes';
 import pushRoutes from './routes/pushRoutes';
 import offerRoutes from './routes/offerRoutes';
 import paymentRoutes from './routes/paymentRoutes';
+import bundleRoutes from './routes/bundleRoutes';
+import registryRoutes from './routes/registryRoutes';
+import courierRoutes from './routes/courierRoutes';
+import sellerToolsRoutes from './routes/sellerToolsRoutes';
+import videoRoutes from './routes/videoRoutes';
 
 
 
@@ -66,6 +71,12 @@ app.use('/api/telegram', telegramRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/offers', offerRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/bundles', bundleRoutes);
+app.use('/api/registries', registryRoutes);
+app.use('/api/couriers', courierRoutes);
+app.use('/api/courier', courierRoutes);
+app.use('/api/seller', sellerToolsRoutes);
+app.use('/api/videos', videoRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

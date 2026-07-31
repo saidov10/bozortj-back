@@ -3,9 +3,30 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { getAttributeFields } from '../config/categoryAttributes';
-import { summarizeReviews, isAssistantConfigured } from '../services/assistantService';
+import { summarizeReviews, isAssistantConfigured, translateProduct } from '../services/assistantService';
 import { buildProductImageRecords } from '../utils/thumbnail';
 import { createLocalizedNotification } from '../services/notificationService';
+import { notifyShopFollowers, notifyBackInStock } from '../services/engagementService';
+import { postToChannel } from '../services/telegramService';
+
+// Fire-and-forget: fill in Russian name/description via the AI translator, so a
+// listing written in Tajik becomes bilingual without blocking the seller.
+const autoTranslateProduct = (productId: string, name: string, description: string): void => {
+  if (!isAssistantConfigured()) return;
+  void (async () => {
+    try {
+      const ru = await translateProduct({ name, description, target: 'ru' });
+      if (ru.name || ru.description) {
+        await prisma.product.update({
+          where: { id: productId },
+          data: { nameRu: ru.name || undefined, descriptionRu: ru.description || undefined }
+        });
+      }
+    } catch (err) {
+      console.error('autoTranslateProduct failed:', err);
+    }
+  })();
+};
 
 // Effective selling price of a product right now (respects an active discount).
 const effectivePrice = (p: { price: number; discountPrice: number | null; isOnDiscount: boolean }): number =>
@@ -204,6 +225,25 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       });
     });
 
+    // Post-create hooks (best-effort, off the response path):
+    if (product) {
+      // Seed the price-history log with the launch price.
+      prisma.priceHistory
+        .create({ data: { productId: product.id, price: effectivePrice(product) } })
+        .catch(() => undefined);
+
+      // Auto-generate the Russian translation.
+      autoTranslateProduct(product.id, product.name, product.description);
+
+      // Tell the shop's followers a new product just landed.
+      void notifyShopFollowers(
+        shop.id,
+        `${shop.shopName}: моли нав 🆕`,
+        `Мағозаи «${shop.shopName}» моли нав гузошт: «${product.name}».`,
+        { type: 'NEW_PRODUCT', productId: product.id, shopId: shop.id }
+      );
+    }
+
     return res.status(201).json({
       message: 'Product created successfully',
       product
@@ -283,6 +323,15 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     if (req.body.lowStockThreshold !== undefined && req.body.lowStockThreshold !== '') {
       const threshold = parseInt(req.body.lowStockThreshold);
       if (!isNaN(threshold) && threshold >= 0) updateData.lowStockThreshold = threshold;
+    }
+    // Auto-accept floor for price offers (empty string clears it).
+    if (req.body.minAcceptablePrice !== undefined) {
+      if (req.body.minAcceptablePrice === '' || req.body.minAcceptablePrice === null) {
+        updateData.minAcceptablePrice = null;
+      } else {
+        const floor = parseFloat(req.body.minAcceptablePrice);
+        if (!isNaN(floor) && floor >= 0) updateData.minAcceptablePrice = floor;
+      }
     }
 
     if (colorId) {
@@ -374,8 +423,26 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     if (updatedProduct) {
       const oldPrice = effectivePrice(product);
       const newPrice = effectivePrice(updatedProduct);
-      if (newPrice < oldPrice) {
-        void notifyWishlistPriceDrop(updatedProduct.id, updatedProduct.name, oldPrice, newPrice);
+
+      // Price changed → append to the price-history log; if it dropped, alert
+      // everyone who wishlisted it.
+      if (newPrice !== oldPrice) {
+        prisma.priceHistory
+          .create({ data: { productId: updatedProduct.id, price: newPrice } })
+          .catch(() => undefined);
+        if (newPrice < oldPrice) {
+          void notifyWishlistPriceDrop(updatedProduct.id, updatedProduct.name, oldPrice, newPrice);
+        }
+      }
+
+      // Restocked from zero → notify "back in stock" subscribers.
+      if (product.stockQuantity <= 0 && updatedProduct.stockQuantity > 0) {
+        void notifyBackInStock(updatedProduct.id);
+      }
+
+      // Name/description changed → refresh the Russian translation.
+      if (updateData.name !== undefined || updateData.description !== undefined) {
+        autoTranslateProduct(updatedProduct.id, updatedProduct.name, updatedProduct.description);
       }
     }
 
@@ -1130,6 +1197,15 @@ export const promoteProduct = async (req: AuthRequest, res: Response) => {
       data: { isPromoted: true, promotedUntil }
     });
 
+    // Cross-post the freshly promoted product to the public Telegram channel.
+    const promoImage = await prisma.productImage.findFirst({ where: { productId: id }, select: { url: true } });
+    void postToChannel({
+      title: `⭐ Тавсия — ${product.name}`,
+      body: `${effectivePrice(product)} сомонӣ дар мағозаи «${product.shop.shopName}».`,
+      productId: id,
+      imageUrl: promoImage?.url ?? null
+    });
+
     return res.status(200).json({
       message: `Product promoted for ${days} day(s)`,
       cost: days * PROMOTION_DAILY_RATE,
@@ -1139,5 +1215,81 @@ export const promoteProduct = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error promoting product', error: error.message });
+  }
+};
+
+// 14. Trending products (Public) — GET /api/products/discovery/trending
+// "🔥 Тренди ҳафта": ranks products by recent momentum — views and units sold in
+// the last 7 days (sales weighted heavier than views).
+export const getTrendingProducts = async (req: AuthRequest, res: Response) => {
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const VIEW_WEIGHT = 1;
+    const SALE_WEIGHT = 3;
+
+    const [recentViews, recentSales] = await Promise.all([
+      prisma.recentlyViewed.groupBy({
+        by: ['productId'],
+        where: { viewedAt: { gte: since } },
+        _count: { productId: true }
+      }),
+      prisma.orderItem.findMany({
+        where: { order: { createdAt: { gte: since }, status: { not: 'CANCELLED' } } },
+        select: { quantity: true, variant: { select: { productId: true } } }
+      })
+    ]);
+
+    const score: Record<string, number> = {};
+    recentViews.forEach((v) => {
+      score[v.productId] = (score[v.productId] || 0) + v._count.productId * VIEW_WEIGHT;
+    });
+    recentSales.forEach((s) => {
+      const pid = s.variant.productId;
+      score[pid] = (score[pid] || 0) + s.quantity * SALE_WEIGHT;
+    });
+
+    const topIds = Object.entries(score)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([id]) => id);
+
+    // Fallback for a fresh catalog with no recent activity: newest products.
+    if (topIds.length === 0) {
+      const newest = await prisma.product.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+        include: RECOMMENDATION_INCLUDE
+      });
+      return res.status(200).json({ products: newest.map(withRatingSummary) });
+    }
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: topIds } },
+      include: RECOMMENDATION_INCLUDE
+    });
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const ordered = topIds.map((id) => byId.get(id)).filter(Boolean);
+
+    return res.status(200).json({
+      products: ordered.map((p) => ({ ...withRatingSummary(p), trendScore: score[(p as any).id] }))
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving trending products', error: error.message });
+  }
+};
+
+// 15. Price history (Public) — GET /api/products/:id/price-history
+// Powers the "how the price changed" chart on the product page.
+export const getPriceHistory = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const history = await prisma.priceHistory.findMany({
+      where: { productId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { price: true, createdAt: true }
+    });
+    return res.status(200).json({ history });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving price history', error: error.message });
   }
 };

@@ -166,6 +166,46 @@ export const getSellerAnalytics = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Sales heatmap (Seller) — GET /api/analytics/heatmap
+// Returns a day-of-week × hour grid of order activity, so the seller knows when
+// buyers are active (best time to launch a flash sale or be online).
+export const getSalesHeatmap = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const shop = await prisma.shopProfile.findUnique({ where: { userId: req.user.id } });
+    if (!shop) return res.status(404).json({ message: 'Shop profile not found' });
+
+    const items = await prisma.orderItem.findMany({
+      where: { shopId: shop.id, order: { status: { not: 'CANCELLED' } } },
+      select: { quantity: true, price: true, order: { select: { createdAt: true } } }
+    });
+
+    // grid[day][hour] = order-line count; also track revenue per cell.
+    const counts: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    const revenue: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+
+    let peak = { day: 0, hour: 0, count: 0 };
+    items.forEach((it) => {
+      const d = new Date(it.order.createdAt);
+      const day = d.getDay(); // 0=Sunday
+      const hour = d.getHours();
+      counts[day][hour] += 1;
+      revenue[day][hour] += it.price * it.quantity;
+      if (counts[day][hour] > peak.count) peak = { day, hour, count: counts[day][hour] };
+    });
+
+    return res.status(200).json({
+      // dayLabels[0] === Sunday to match JS getDay()
+      dayLabels: ['Якшанбе', 'Душанбе', 'Сешанбе', 'Чоршанбе', 'Панҷшанбе', 'Ҷумъа', 'Шанбе'],
+      counts,
+      revenue: revenue.map((row) => row.map((v) => +v.toFixed(2))),
+      peak
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving heatmap', error: error.message });
+  }
+};
+
 // Get Platform-Wide Analytics (Admin Only)
 export const getAdminAnalytics = async (req: AuthRequest, res: Response) => {
   try {
