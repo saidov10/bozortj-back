@@ -5,7 +5,10 @@ import {
   getOrderById,
   updateOrderStatus,
   getOrderTimeline,
-  getDeliveryQuote
+  getDeliveryQuote,
+  cancelOrderByBuyer,
+  reorder,
+  getMyWarranties
 } from '../controllers/orderController';
 import { assignCourier } from '../controllers/courierController';
 import { authenticate, authorize } from '../middleware/auth';
@@ -16,10 +19,13 @@ router.use(authenticate);
 
 router.post('/', authorize(['BUYER']), createOrder);
 router.get('/delivery-quote', authorize(['BUYER']), getDeliveryQuote);
+router.get('/warranties', authorize(['BUYER']), getMyWarranties);
 router.get('/', getOrders);
 router.get('/:id', getOrderById);
 router.get('/:id/timeline', getOrderTimeline);
 router.put('/:id/status', authorize(['SELLER', 'ADMIN']), updateOrderStatus);
 router.post('/:id/assign-courier', authorize(['SELLER', 'ADMIN']), assignCourier);
+router.post('/:id/cancel', authorize(['BUYER']), cancelOrderByBuyer);
+router.post('/:id/reorder', authorize(['BUYER']), reorder);
 
 export default router;

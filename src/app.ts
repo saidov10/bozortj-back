@@ -31,6 +31,8 @@ import registryRoutes from './routes/registryRoutes';
 import courierRoutes from './routes/courierRoutes';
 import sellerToolsRoutes from './routes/sellerToolsRoutes';
 import videoRoutes from './routes/videoRoutes';
+import shoppingListRoutes from './routes/shoppingListRoutes';
+import auctionRoutes from './routes/auctionRoutes';
 
 
 
@@ -77,6 +79,8 @@ app.use('/api/couriers', courierRoutes);
 app.use('/api/courier', courierRoutes);
 app.use('/api/seller', sellerToolsRoutes);
 app.use('/api/videos', videoRoutes);
+app.use('/api/shopping-lists', shoppingListRoutes);
+app.use('/api/auctions', auctionRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

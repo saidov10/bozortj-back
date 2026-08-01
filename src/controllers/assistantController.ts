@@ -6,6 +6,8 @@ import {
   generateProductDescription,
   translateProduct,
   suggestSellerReply,
+  recommendSize,
+  transcribeAudio,
   isAssistantConfigured,
   ImageMediaType
 } from '../services/assistantService';
@@ -195,5 +197,113 @@ export const assistantSuggestReply = async (req: AuthRequest, res: Response) => 
   } catch (error: any) {
     console.error('Assistant suggest-reply error:', error);
     return res.status(500).json({ message: 'Failed to draft reply', error: error?.message });
+  }
+};
+
+// POST /api/assistant/size-advice  (public)
+// Body: { productId, heightCm?, weightKg?, notes? } → { advice }
+export const assistantSizeAdvice = async (req: Request, res: Response) => {
+  try {
+    if (!isAssistantConfigured()) return notConfigured(res);
+    const { productId, heightCm, weightKg, notes } = req.body;
+    if (!productId) return res.status(400).json({ message: 'productId is required' });
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { category: true, variants: { select: { size: true } } }
+    });
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const availableSizes = Array.from(new Set(product.variants.map((v) => v.size).filter(Boolean)));
+    const result = await recommendSize({
+      productName: product.name,
+      category: product.category?.name,
+      availableSizes,
+      attributes: (product.attributes as Record<string, any>) || null,
+      heightCm: heightCm ? parseFloat(heightCm) : undefined,
+      weightKg: weightKg ? parseFloat(weightKg) : undefined,
+      notes: notes ? String(notes).slice(0, 300) : undefined
+    });
+    if (!result.advice) return res.status(502).json({ message: 'Could not produce size advice. Try again.' });
+    return res.status(200).json({ ...result, availableSizes });
+  } catch (error: any) {
+    console.error('Assistant size-advice error:', error);
+    return res.status(500).json({ message: 'Failed to advise size', error: error?.message });
+  }
+};
+
+// POST /api/assistant/voice  (public) — multipart "audio"
+// Transcribes the voice message (Whisper) and runs the shopping assistant on it.
+export const assistantVoice = async (req: Request, res: Response) => {
+  try {
+    if (!isAssistantConfigured()) return notConfigured(res);
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ message: 'An audio file is required (field "audio")' });
+    }
+
+    const transcript = await transcribeAudio(file.buffer, file.originalname);
+    if (!transcript) {
+      return res.status(502).json({ message: 'Could not transcribe the audio. Try again.' });
+    }
+
+    const result = await chatWithAssistant(transcript);
+    return res.status(200).json({ transcript, ...result });
+  } catch (error: any) {
+    console.error('Assistant voice error:', error);
+    return res.status(500).json({ message: 'Failed to process voice message', error: error?.message });
+  }
+};
+
+// POST /api/assistant/price-advice  (seller only)
+// Body: { name?, categoryId?, brandId? } → data-driven suggested price range from
+// comparable products already on the platform.
+export const assistantPriceAdvice = async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, categoryId, brandId } = req.body;
+
+    const where: any = {};
+    if (categoryId) where.categoryId = categoryId;
+    if (brandId) where.brandId = brandId;
+    if (name && typeof name === 'string' && name.trim()) {
+      const terms = name.trim().split(/\s+/).filter((w: string) => w.length >= 3).slice(0, 4);
+      if (terms.length) {
+        where.OR = terms.map((t: string) => ({ name: { contains: t, mode: 'insensitive' } }));
+      }
+    }
+    if (!where.categoryId && !where.brandId && !where.OR) {
+      return res.status(400).json({ message: 'Provide at least name, categoryId or brandId' });
+    }
+
+    const similar = await prisma.product.findMany({
+      where,
+      select: { price: true },
+      take: 200
+    });
+    if (similar.length === 0) {
+      return res.status(200).json({ count: 0, message: 'Ҳоло моли монанд нест — нархро озод гузоред.' });
+    }
+
+    const prices = similar.map((p) => p.price).sort((a, b) => a - b);
+    const min = prices[0];
+    const max = prices[prices.length - 1];
+    const avg = +(prices.reduce((s, p) => s + p, 0) / prices.length).toFixed(2);
+    const median = prices[Math.floor(prices.length / 2)];
+    // Suggest a competitive band around the median.
+    const suggestedLow = +(median * 0.92).toFixed(2);
+    const suggestedHigh = +(median * 1.05).toFixed(2);
+
+    return res.status(200).json({
+      count: similar.length,
+      min,
+      max,
+      avg,
+      median,
+      suggestedRange: { low: suggestedLow, high: suggestedHigh },
+      message: `Молҳои монанд ${min}–${max} сомонӣ (миёна ${median}). Нархи рақобатпазир: ${suggestedLow}–${suggestedHigh} сомонӣ.`
+    });
+  } catch (error: any) {
+    console.error('Assistant price-advice error:', error);
+    return res.status(500).json({ message: 'Failed to advise price', error: error?.message });
   }
 };

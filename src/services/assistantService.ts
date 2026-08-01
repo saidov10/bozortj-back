@@ -1,4 +1,4 @@
-import Groq from 'groq-sdk';
+import Groq, { toFile } from 'groq-sdk';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool
@@ -13,6 +13,7 @@ import prisma from '../config/prisma';
 
 const MODEL = process.env.ASSISTANT_MODEL || 'llama-3.3-70b-versatile';
 const VISION_MODEL = process.env.ASSISTANT_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const AUDIO_MODEL = process.env.ASSISTANT_AUDIO_MODEL || 'whisper-large-v3';
 
 // Lazily-constructed client so importing this module never crashes when the
 // key is missing (all endpoints gate on isAssistantConfigured first).
@@ -444,6 +445,63 @@ export const suggestSellerReply = async (input: {
   } catch (err) {
     console.error('suggestSellerReply failed:', err);
     return { reply: '' };
+  }
+};
+
+// 📏 Size advisor: recommend a size for this product from the buyer's body
+// measurements and the product's available sizes / spec attributes.
+export const recommendSize = async (input: {
+  productName: string;
+  category?: string;
+  availableSizes: string[];
+  attributes?: Record<string, any> | null;
+  heightCm?: number;
+  weightKg?: number;
+  notes?: string;
+}): Promise<{ advice: string }> => {
+  const lines = [`Маҳсулот: ${input.productName}`];
+  if (input.category) lines.push(`Категория: ${input.category}`);
+  if (input.availableSizes.length) lines.push(`Андозаҳои мавҷуд: ${input.availableSizes.join(', ')}`);
+  if (input.attributes && Object.keys(input.attributes).length) {
+    lines.push(`Хусусиятҳо: ${JSON.stringify(input.attributes)}`);
+  }
+  if (input.heightCm) lines.push(`Қади харидор: ${input.heightCm} см`);
+  if (input.weightKg) lines.push(`Вазни харидор: ${input.weightKg} кг`);
+  if (input.notes) lines.push(`Шарҳи иловагӣ: ${input.notes}`);
+
+  try {
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 400,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Ту мушовири андозаи либос/пойафзол ҳастӣ. Аз рӯи маълумоти харидор ва андозаҳои мавҷуди маҳсулот, як андозаи мушаххасро тавсия деҳ ва кӯтоҳ (1-2 ҷумла) бо тоҷикӣ шарҳ деҳ, чаро. Танҳо аз андозаҳои мавҷуд интихоб кун. Агар маълумот кам бошад, бипурс. Танҳо матни тавсияро баргардон.'
+        },
+        { role: 'user', content: lines.join('\n') }
+      ]
+    });
+    return { advice: (completion.choices[0]?.message?.content || '').trim() };
+  } catch (err) {
+    console.error('recommendSize failed:', err);
+    return { advice: '' };
+  }
+};
+
+// 🎤 Transcribe a voice message (Groq Whisper) so buyers can search / chat by
+// speaking instead of typing.
+export const transcribeAudio = async (buffer: Buffer, filename: string): Promise<string> => {
+  try {
+    const file = await toFile(buffer, filename || 'audio.m4a');
+    const result = await getClient().audio.transcriptions.create({
+      file,
+      model: AUDIO_MODEL
+    });
+    return (result.text || '').trim();
+  } catch (err) {
+    console.error('transcribeAudio failed:', err);
+    return '';
   }
 };
 

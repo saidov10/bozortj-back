@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getShops, getShopById, updateShopSettings } from '../controllers/shopController';
+import { getShops, getShopById, updateShopSettings, updateShopBanner } from '../controllers/shopController';
 import { getShopBadges } from '../controllers/trustController';
 import {
   followShop,
@@ -8,6 +8,7 @@ import {
   getShopStatus
 } from '../controllers/engagementController';
 import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth';
+import { uploadBanner } from '../middleware/upload';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.get('/:id', getShopById);
 
 // Seller only settings
 router.put('/settings/auto-reply', authenticate, updateShopSettings);
+router.put('/settings/banner', authenticate, uploadBanner, updateShopBanner);
 
 // Follow / unfollow a shop (Buyer)
 router.post('/:shopId/follow', authenticate, authorize(['BUYER']), followShop);

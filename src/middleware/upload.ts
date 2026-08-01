@@ -15,6 +15,8 @@ const storage = multer.diskStorage({
     let dest = 'uploads/';
     if (file.fieldname === 'avatar') {
       dest = 'uploads/avatars/';
+    } else if (file.fieldname === 'banner') {
+      dest = 'uploads/banners/';
     } else if (file.fieldname === 'images' || file.fieldname === 'photos') {
       dest = 'uploads/products/';
     } else if (file.fieldname === 'reviewImages') {
@@ -57,6 +59,9 @@ export const upload = multer({
 
 // Single avatar upload handler
 export const uploadAvatar = upload.single('avatar');
+
+// Single shop banner upload handler (storefront customization)
+export const uploadBanner = upload.single('banner');
 
 // Multiple product images upload handler (up to 10 photos)
 export const uploadProductImages = upload.array('images', 10);

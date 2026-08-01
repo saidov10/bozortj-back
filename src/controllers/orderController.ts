@@ -49,7 +49,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (req.user.role !== 'BUYER') return res.status(403).json({ message: 'Only buyers can place orders' });
 
-    const { couponCode, addressId, deliveryType: rawDeliveryType, installmentMonths } = req.body;
+    const { couponCode, addressId, deliveryType: rawDeliveryType, installmentMonths, deliverySlot } = req.body;
 
     // Fulfilment method — home delivery (needs an address) or self-pickup.
     const deliveryType = rawDeliveryType === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
@@ -127,6 +127,18 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           message: `Insufficient stock for product "${item.variant.product.name}" (Size: ${item.variant.size}). Only ${item.variant.stockQuantity} items left.`
         });
       }
+    }
+
+    // Block ordering from shops that are on vacation.
+    const cartShopIds = Array.from(new Set(cartItems.map((i) => i.variant.product.shopId)));
+    const vacationingShops = await prisma.shopProfile.findMany({
+      where: { id: { in: cartShopIds }, vacationMode: true },
+      select: { shopName: true }
+    });
+    if (vacationingShops.length > 0) {
+      return res.status(400).json({
+        message: `Мағозаи «${vacationingShops[0].shopName}» ҳоло дар таътил аст. Молҳои онро баъдтар харед.`
+      });
     }
 
     // Calculate prices
@@ -256,6 +268,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           totalPrice: finalTotal,
           deliveryFee: deliveryTotal,
           deliveryType,
+          deliverySlot: deliverySlot ? String(deliverySlot).slice(0, 60) : null,
           paymentMethod: installmentPlanMonths ? 'INSTALLMENT' : 'COD',
           couponId: appliedCoupon ? appliedCoupon.id : null,
           addressId: addressId || null
@@ -771,5 +784,160 @@ export const getOrderTimeline = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving order timeline', error: error.message });
+  }
+};
+
+// 6. Buyer cancels their own order — allowed only while still PENDING (before the
+// seller starts preparing). Restores stock and notifies the affected shops.
+export const cancelOrderByBuyer = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: true }
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.userId !== req.user.id) return res.status(403).json({ message: 'This is not your order' });
+    if (order.status !== 'PENDING') {
+      return res.status(400).json({ message: 'Фармоишро танҳо то оғози омодасозӣ бекор кардан мумкин аст' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Restore stock for every line.
+      for (const item of order.items) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stockQuantity: { increment: item.quantity } }
+        });
+        const variant = await tx.productVariant.findUnique({ where: { id: item.variantId }, select: { productId: true } });
+        if (variant) {
+          await tx.product.update({
+            where: { id: variant.productId },
+            data: { stockQuantity: { increment: item.quantity } }
+          });
+        }
+      }
+      await tx.order.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason || null } });
+      await tx.orderStatusHistory.create({
+        data: { orderId: id, status: 'CANCELLED', note: reason ? `Buyer cancelled: ${reason}` : 'Cancelled by buyer' }
+      });
+    });
+
+    // Notify each affected shop.
+    const shopIds = Array.from(new Set(order.items.map((i) => i.shopId)));
+    for (const sId of shopIds) {
+      const shop = await prisma.shopProfile.findUnique({ where: { id: sId }, select: { userId: true } });
+      if (shop) {
+        await createNotification(
+          shop.userId,
+          'Фармоиш бекор карда шуд',
+          `Харидор фармоиши #${id.substring(0, 8)}-ро бекор кард${reason ? `: ${reason}` : ''}.`,
+          { type: 'ORDER_CANCELLED', orderId: id }
+        );
+      }
+    }
+    broadcastOrderStatus(order.userId, { orderId: id, status: 'CANCELLED', note: 'Cancelled by buyer' });
+
+    return res.status(200).json({ message: 'Фармоиш бекор карда шуд', orderId: id });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error cancelling order', error: error.message });
+  }
+};
+
+// 7. Reorder — add all items from a past order back into the buyer's cart.
+// Out-of-stock or removed items are skipped and reported.
+export const reorder = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: { include: { variant: { include: { product: { select: { name: true } } } } } } }
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.userId !== req.user.id) return res.status(403).json({ message: 'This is not your order' });
+
+    let added = 0;
+    const skipped: string[] = [];
+
+    for (const item of order.items) {
+      const variant = await prisma.productVariant.findUnique({ where: { id: item.variantId } });
+      if (!variant || variant.stockQuantity < 1) {
+        skipped.push(item.variant.product.name);
+        continue;
+      }
+      const desired = Math.min(item.quantity, variant.stockQuantity);
+      const existing = await prisma.cartItem.findFirst({
+        where: { userId: req.user.id, variantId: item.variantId }
+      });
+      if (existing) {
+        const newQty = Math.min(existing.quantity + desired, variant.stockQuantity);
+        await prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: newQty } });
+      } else {
+        await prisma.cartItem.create({
+          data: { userId: req.user.id, variantId: item.variantId, quantity: desired }
+        });
+      }
+      added++;
+    }
+
+    return res.status(200).json({
+      message: `${added} мол ба сабад илова шуд`,
+      addedCount: added,
+      skipped
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error reordering', error: error.message });
+  }
+};
+
+// 8. Buyer's active warranties — products still under warranty from delivered
+// orders, with computed expiry dates (kafolatnoma).
+export const getMyWarranties = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const items = await prisma.orderItem.findMany({
+      where: {
+        order: { userId: req.user.id, status: 'DELIVERED' },
+        variant: { product: { warrantyMonths: { gt: 0 } } }
+      },
+      include: {
+        order: { select: { id: true, updatedAt: true } },
+        variant: {
+          include: {
+            product: { select: { id: true, name: true, warrantyMonths: true, images: { take: 1 } } }
+          }
+        }
+      }
+    });
+
+    const now = Date.now();
+    const warranties = items.map((it) => {
+      // Approximate the delivery date by the order's last update.
+      const start = new Date(it.order.updatedAt);
+      const expiry = new Date(start);
+      expiry.setMonth(expiry.getMonth() + it.variant.product.warrantyMonths);
+      const daysLeft = Math.ceil((expiry.getTime() - now) / (24 * 60 * 60 * 1000));
+      return {
+        orderId: it.order.id,
+        productId: it.variant.product.id,
+        productName: it.variant.product.name,
+        image: it.variant.product.images[0]?.url ?? null,
+        warrantyMonths: it.variant.product.warrantyMonths,
+        startDate: start,
+        expiryDate: expiry,
+        daysLeft,
+        active: daysLeft > 0
+      };
+    });
+
+    return res.status(200).json({ warranties });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving warranties', error: error.message });
   }
 };

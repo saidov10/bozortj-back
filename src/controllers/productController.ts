@@ -174,7 +174,8 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
           stockQuantity: totalStock,
           categoryId: effectiveCategoryId,
           brandId,
-          attributes: parsedAttributes ?? undefined
+          attributes: parsedAttributes ?? undefined,
+          warrantyMonths: req.body.warrantyMonths ? Math.max(0, parseInt(req.body.warrantyMonths) || 0) : 0
         }
       });
 
@@ -323,6 +324,11 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     if (req.body.lowStockThreshold !== undefined && req.body.lowStockThreshold !== '') {
       const threshold = parseInt(req.body.lowStockThreshold);
       if (!isNaN(threshold) && threshold >= 0) updateData.lowStockThreshold = threshold;
+    }
+    // Warranty length in months.
+    if (req.body.warrantyMonths !== undefined && req.body.warrantyMonths !== '') {
+      const wm = parseInt(req.body.warrantyMonths);
+      if (!isNaN(wm) && wm >= 0) updateData.warrantyMonths = wm;
     }
     // Auto-accept floor for price offers (empty string clears it).
     if (req.body.minAcceptablePrice !== undefined) {
@@ -660,6 +666,7 @@ export const getProductById = async (req: AuthRequest, res: Response) => {
           }
         },
         reviews: {
+          orderBy: [{ helpfulCount: 'desc' }, { createdAt: 'desc' }],
           include: {
             images: true,
             user: {
@@ -1275,6 +1282,42 @@ export const getTrendingProducts = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving trending products', error: error.message });
+  }
+};
+
+// 16. Vote a review helpful (Buyer) — POST /api/products/reviews/:reviewId/helpful
+// Toggling: voting again removes the vote. helpfulCount stays in sync.
+export const toggleReviewHelpful = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const { reviewId } = req.params;
+
+    const review = await prisma.review.findUnique({ where: { id: reviewId }, select: { id: true } });
+    if (!review) return res.status(404).json({ message: 'Review not found' });
+
+    const existing = await prisma.reviewVote.findUnique({
+      where: { userId_reviewId: { userId: req.user.id, reviewId } }
+    });
+
+    let voted: boolean;
+    if (existing) {
+      await prisma.$transaction([
+        prisma.reviewVote.delete({ where: { id: existing.id } }),
+        prisma.review.update({ where: { id: reviewId }, data: { helpfulCount: { decrement: 1 } } })
+      ]);
+      voted = false;
+    } else {
+      await prisma.$transaction([
+        prisma.reviewVote.create({ data: { userId: req.user.id, reviewId } }),
+        prisma.review.update({ where: { id: reviewId }, data: { helpfulCount: { increment: 1 } } })
+      ]);
+      voted = true;
+    }
+
+    const updated = await prisma.review.findUnique({ where: { id: reviewId }, select: { helpfulCount: true } });
+    return res.status(200).json({ voted, helpfulCount: updated?.helpfulCount ?? 0 });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error voting on review', error: error.message });
   }
 };
 

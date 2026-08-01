@@ -80,7 +80,9 @@ export const updateShopSettings = async (req: any, res: Response) => {
 
     const {
       autoReplyText, autoReplyEnabled, deliveryFee, freeDeliveryThreshold,
-      allowPickup, pickupAddress, installmentEnabled, installmentMonths
+      allowPickup, pickupAddress, installmentEnabled, installmentMonths,
+      vacationMode, vacationMessage, vacationUntil,
+      brandColor, aboutText, featuredProductIds
     } = req.body;
 
     const shop = await prisma.shopProfile.findUnique({
@@ -141,6 +143,25 @@ export const updateShopSettings = async (req: any, res: Response) => {
       dataPatch.installmentMonths = Array.from(new Set(months));
     }
 
+    // Vacation mode (реҷаи таътил).
+    if (vacationMode !== undefined) dataPatch.vacationMode = vacationMode === 'true' || vacationMode === true;
+    if (vacationMessage !== undefined) dataPatch.vacationMessage = vacationMessage || null;
+    if (vacationUntil !== undefined) {
+      dataPatch.vacationUntil = vacationUntil ? new Date(vacationUntil) : null;
+    }
+
+    // Storefront customization (ороиши витрина).
+    if (brandColor !== undefined) dataPatch.brandColor = brandColor || null;
+    if (aboutText !== undefined) dataPatch.aboutText = aboutText || null;
+    if (featuredProductIds !== undefined) {
+      let ids: string[] = [];
+      if (Array.isArray(featuredProductIds)) ids = featuredProductIds.filter((x: any) => typeof x === 'string');
+      else if (typeof featuredProductIds === 'string' && featuredProductIds.trim() !== '') {
+        ids = featuredProductIds.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      dataPatch.featuredProductIds = Array.from(new Set(ids)).slice(0, 12);
+    }
+
     const updatedShop = await prisma.shopProfile.update({
       where: { id: shop.id },
       data: dataPatch
@@ -152,5 +173,25 @@ export const updateShopSettings = async (req: any, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating shop settings', error: error.message });
+  }
+};
+
+// 4. Upload/replace the shop banner image (storefront customization) - Seller Only
+export const updateShopBanner = async (req: any, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    if (req.user.role !== 'SELLER') return res.status(403).json({ message: 'Only sellers can modify shop settings' });
+
+    const shop = await prisma.shopProfile.findUnique({ where: { userId: req.user.id } });
+    if (!shop) return res.status(404).json({ message: 'Shop profile not found' });
+    if (!req.file) return res.status(400).json({ message: 'A banner image is required (field "banner")' });
+
+    const updatedShop = await prisma.shopProfile.update({
+      where: { id: shop.id },
+      data: { bannerUrl: `/uploads/banners/${req.file.filename}` }
+    });
+    return res.status(200).json({ message: 'Banner updated', bannerUrl: updatedShop.bannerUrl });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error updating banner', error: error.message });
   }
 };

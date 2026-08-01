@@ -5,7 +5,10 @@ import {
   assistantPhoto,
   assistantGenerateDescription,
   assistantTranslate,
-  assistantSuggestReply
+  assistantSuggestReply,
+  assistantSizeAdvice,
+  assistantVoice,
+  assistantPriceAdvice
 } from '../controllers/assistantController';
 import { authenticate, authorize } from '../middleware/auth';
 
@@ -21,6 +24,8 @@ const uploadMemory = multer({
 // Public: AI shopping assistant
 router.post('/chat', assistantChat);
 router.post('/photo', uploadMemory.single('photo'), assistantPhoto);
+router.post('/size-advice', assistantSizeAdvice);
+router.post('/voice', uploadMemory.single('audio'), assistantVoice);
 
 // Seller: AI description generator
 router.post(
@@ -30,8 +35,9 @@ router.post(
   assistantGenerateDescription
 );
 
-// Seller: AI translate (tj <-> ru) and suggested reply drafting
+// Seller: AI translate (tj <-> ru), suggested reply drafting, price advice
 router.post('/translate', authenticate, authorize(['SELLER']), assistantTranslate);
 router.post('/suggest-reply', authenticate, authorize(['SELLER']), assistantSuggestReply);
+router.post('/price-advice', authenticate, authorize(['SELLER']), assistantPriceAdvice);
 
 export default router;

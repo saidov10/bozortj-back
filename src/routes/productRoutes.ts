@@ -15,7 +15,8 @@ import {
   getPromotedProducts,
   promoteProduct,
   getTrendingProducts,
-  getPriceHistory
+  getPriceHistory,
+  toggleReviewHelpful
 } from '../controllers/productController';
 import {
   getProductQuestions,
@@ -89,6 +90,9 @@ router.post('/:id/promote', authenticate, authorize(['SELLER']), promoteProduct)
 
 // Reply to review (Seller only)
 router.post('/reviews/:id/reply', authenticate, authorize(['SELLER']), replyToReview);
+
+// Vote a review helpful (Buyer)
+router.post('/reviews/:reviewId/helpful', authenticate, authorize(['BUYER']), toggleReviewHelpful);
 
 // Buyer only routes (Allows uploading multiple review photos)
 router.post(

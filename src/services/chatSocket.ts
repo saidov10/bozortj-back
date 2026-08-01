@@ -150,7 +150,15 @@ export const initChatSocket = (server: any) => {
           where: { userId: receiverId }
         });
 
-        if (receiverShop && receiverShop.autoReplyEnabled && receiverShop.autoReplyText) {
+        // While on vacation, always auto-reply with the vacation message so
+        // buyers know not to expect a quick response.
+        const onVacation = receiverShop && receiverShop.vacationMode && receiverShop.vacationMessage;
+        const autoReplyActive = receiverShop && receiverShop.autoReplyEnabled && receiverShop.autoReplyText;
+
+        if (receiverShop && (onVacation || autoReplyActive)) {
+          const replyText = onVacation
+            ? (receiverShop.vacationMessage as string)
+            : (receiverShop.autoReplyText as string);
           // Check if seller already sent a message to this user in the last 5 minutes to avoid loops
           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
           const recentMessage = await prisma.message.findFirst({
@@ -169,7 +177,7 @@ export const initChatSocket = (server: any) => {
                   data: {
                     senderId: receiverId,
                     receiverId: userId,
-                    text: receiverShop.autoReplyText || 'Hello! Thanks for writing. We will respond shortly.'
+                    text: replyText || 'Hello! Thanks for writing. We will respond shortly.'
                   },
                   include: {
                     sender: {
@@ -275,5 +283,19 @@ export const broadcastFlashSaleUpdate = (data: {
 }) => {
   if (ioInstance) {
     ioInstance.emit('flash_sale_update', data);
+  }
+};
+
+// Live auction update (a new bid, or the auction closing) broadcast to everyone
+// so all watchers see the current price / winner tick in real time.
+export const broadcastAuctionUpdate = (data: {
+  auctionId: string;
+  productId: string;
+  currentPrice: number;
+  currentBidderId: string | null;
+  status: string;
+}) => {
+  if (ioInstance) {
+    ioInstance.emit('auction_update', data);
   }
 };

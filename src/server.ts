@@ -4,6 +4,7 @@ import { initChatSocket } from './services/chatSocket';
 import { startAbandonedCartJob } from './services/abandonedCartJob';
 import { startTelegramBot } from './services/telegramService';
 import { startDailySummaryJob } from './services/dailySummaryJob';
+import { startAuctionJob } from './services/auctionJob';
 
 const PORT = process.env.PORT || 5000;
 
@@ -21,6 +22,9 @@ startTelegramBot();
 
 // Start the daily seller summary push (no-op if Telegram is unset)
 startDailySummaryJob();
+
+// Start the auction closing job (finalizes ended auctions, notifies winners)
+startAuctionJob();
 
 // Start listening
 server.listen(PORT, () => {

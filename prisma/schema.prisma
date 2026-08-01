@@ -50,6 +50,10 @@ model User {
   stockAlerts        StockNotification[]
   giftRegistries     GiftRegistry[]
   courierDeliveries  Order[]             @relation("CourierOrders")
+  shoppingLists      ShoppingList[]
+  reviewVotes        ReviewVote[]
+  bids               Bid[]
+  wonAuctions        Auction[]           @relation("AuctionWinner")
 }
 
 model ShopProfile {
@@ -75,6 +79,18 @@ model ShopProfile {
   installmentEnabled Boolean @default(false)
   installmentMonths  Int[]   @default([]) // e.g. [3, 6, 9]
 
+  // Vacation mode (реҷаи таътил): while on, the shop's products can't be ordered
+  // and chat auto-replies with the vacation message.
+  vacationMode    Boolean  @default(false)
+  vacationMessage String?
+  vacationUntil   DateTime?
+
+  // Storefront customization (ороиши витрина).
+  bannerUrl         String?
+  brandColor        String?  // hex, e.g. "#0A7E3D"
+  aboutText         String?
+  featuredProductIds String[] @default([])
+
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -86,6 +102,7 @@ model ShopProfile {
   priceOffers PriceOffer[]
   followers   ShopFollow[]
   bundles     Bundle[]
+  auctions    Auction[]
 }
 
 model Category {
@@ -155,6 +172,10 @@ model Product {
   nameRu        String?
   descriptionRu String?
 
+  // Warranty length in months (0 = none). Shown on the product & order; buyers
+  // are reminded before it expires.
+  warrantyMonths Int @default(0)
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -178,6 +199,7 @@ model Product {
   bundleItems   BundleItem[]
   wholesaleTiers WholesaleTier[]
   registryItems GiftRegistryItem[]
+  auctions      Auction[]
 }
 
 // Per-buyer "recently viewed" history — one row per (buyer, product), refreshed
@@ -209,6 +231,7 @@ model ProductVariant {
 
   cartItems     CartItem[]
   orderItems    OrderItem[]
+  shoppingListItems ShoppingListItem[]
 }
 
 model ProductImage {
@@ -308,6 +331,10 @@ model Order {
   deliveryType String  @default("DELIVERY") // "DELIVERY" | "PICKUP"
   courierId    String?
   courier      User?    @relation("CourierOrders", fields: [courierId], references: [id], onDelete: SetNull)
+  deliverySlot String?  // buyer-chosen delivery window, e.g. "2026-08-02|18:00-21:00"
+
+  // Buyer-initiated cancellation reason (set when a buyer cancels a pending order).
+  cancelReason String?
 
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
@@ -390,8 +417,10 @@ model Review {
   comment       String?
   sellerReply   String?
   sellerReplyAt DateTime?
+  helpfulCount  Int           @default(0) // number of "this review was helpful" votes
   createdAt     DateTime      @default(now())
   images        ReviewImage[]
+  votes         ReviewVote[]
 }
 
 model ReviewImage {
@@ -595,4 +624,70 @@ model InstallmentPlan {
   nextDueDate   DateTime // when the next instalment is due
   status        String   @default("ACTIVE") // ACTIVE, COMPLETED, DEFAULTED
   createdAt     DateTime @default(now())
+}
+
+// Named shopping lists (сабадҳои номдор) — a buyer keeps multiple saved carts
+// ("for the wedding", "for school") and moves items to the real cart when ready.
+model ShoppingList {
+  id        String             @id @default(uuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime           @default(now())
+  items     ShoppingListItem[]
+}
+
+model ShoppingListItem {
+  id        String         @id @default(uuid())
+  listId    String
+  list      ShoppingList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity  Int            @default(1)
+
+  @@unique([listId, variantId])
+}
+
+// "Was this review helpful?" vote — one per buyer per review.
+model ReviewVote {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, reviewId])
+}
+
+// Auction (музояда): a seller lists a product for timed bidding. Buyers raise
+// the price live; when the timer ends the highest bidder wins.
+model Auction {
+  id              String      @id @default(uuid())
+  productId       String
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shopId          String
+  shop            ShopProfile @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  startPrice      Float
+  currentPrice    Float
+  bidIncrement    Float       @default(1) // minimum raise per bid
+  currentBidderId String?
+  currentBidder   User?       @relation("AuctionWinner", fields: [currentBidderId], references: [id], onDelete: SetNull)
+  startsAt        DateTime    @default(now())
+  endsAt          DateTime
+  status          String      @default("ACTIVE") // ACTIVE, ENDED, CANCELLED
+  createdAt       DateTime    @default(now())
+  bids            Bid[]
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  createdAt DateTime @default(now())
+
+  @@index([auctionId, createdAt])
 }
