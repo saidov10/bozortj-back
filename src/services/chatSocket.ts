@@ -300,6 +300,17 @@ export const broadcastAuctionUpdate = (data: {
   }
 };
 
+// Live courier tracking — the assigned courier's latest GPS position, pushed to
+// the buyer's room so their delivery map marker moves in real time.
+export const broadcastCourierLocation = (
+  userId: string,
+  data: { orderId: string; lat: number; lng: number; at: Date }
+) => {
+  if (ioInstance) {
+    ioInstance.to(userId).emit('courier_location', data);
+  }
+};
+
 // Live shopping (live-фурӯш) update — a stream going live/ending, or the seller
 // pinning a new product / changing its live price. Broadcast to everyone so the
 // live-shopping screen updates in real time.

@@ -364,6 +364,13 @@ model Order {
   courier      User?   @relation("CourierOrders", fields: [courierId], references: [id], onDelete: SetNull)
   deliverySlot String? // buyer-chosen delivery window, e.g. "2026-08-02|18:00-21:00"
 
+  // Live courier tracking (пайгирии зинда): the assigned courier pushes their
+  // GPS position while delivering; the buyer watches it move on a map. Only the
+  // latest point is kept — live movement is streamed over the socket.
+  courierLat        Float?
+  courierLng        Float?
+  courierLocationAt DateTime?
+
   // Pickup point (нуқтаи гирифтан) chosen for a "PICKUP_POINT" order.
   pickupPointId String?
   pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)

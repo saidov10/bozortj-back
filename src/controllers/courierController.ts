@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createLocalizedNotification } from '../services/notificationService';
-import { broadcastOrderStatus } from '../services/chatSocket';
+import { broadcastOrderStatus, broadcastCourierLocation } from '../services/chatSocket';
 import { orderStatusLabel } from '../config/messages';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-jwt-token-auth';
@@ -154,5 +154,87 @@ export const updateDeliveryStatus = async (req: AuthRequest, res: Response) => {
     return res.status(200).json({ message: 'Delivery status updated', status });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error updating delivery status', error: error.message });
+  }
+};
+
+// PUT /api/courier/deliveries/:id/location  (COURIER)  { lat, lng }
+// The courier pushes their current GPS position while delivering. We store only
+// the latest point and stream it live to the buyer's map.
+export const updateCourierLocation = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const { id } = req.params;
+    const lat = parseFloat(req.body.lat);
+    const lng = parseFloat(req.body.lng);
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({ message: 'Valid lat and lng are required' });
+    }
+
+    const order = await prisma.order.findUnique({ where: { id }, select: { courierId: true, userId: true, status: true } });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.courierId !== req.user.id) {
+      return res.status(403).json({ message: 'This delivery is not assigned to you' });
+    }
+    // Only meaningful while the order is on the way.
+    if (!['PROCESSING', 'SHIPPED'].includes(order.status)) {
+      return res.status(400).json({ message: 'Tracking is only active while the order is on the way' });
+    }
+
+    const at = new Date();
+    await prisma.order.update({
+      where: { id },
+      data: { courierLat: lat, courierLng: lng, courierLocationAt: at }
+    });
+
+    broadcastCourierLocation(order.userId, { orderId: id, lat, lng, at });
+    return res.status(200).json({ message: 'Location updated' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error updating location', error: error.message });
+  }
+};
+
+// GET /api/orders/:id/courier-location  — latest known courier position for an
+// order. Visible to the buyer who owns it, the assigned courier, and a seller
+// whose products are in the order.
+export const getCourierLocation = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      select: {
+        userId: true,
+        courierId: true,
+        status: true,
+        courierLat: true,
+        courierLng: true,
+        courierLocationAt: true,
+        address: { select: { city: true, street: true, building: true, landmark: true } },
+        courier: { select: { id: true, name: true, phone: true } },
+        items: { select: { shopId: true } }
+      }
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    let allowed = order.userId === req.user.id || order.courierId === req.user.id;
+    if (!allowed && req.user.role === 'SELLER') {
+      const shop = await prisma.shopProfile.findUnique({ where: { userId: req.user.id }, select: { id: true } });
+      allowed = Boolean(shop && order.items.some((i) => i.shopId === shop.id));
+    }
+    if (!allowed) return res.status(403).json({ message: 'You cannot track this order' });
+
+    const hasLocation = order.courierLat != null && order.courierLng != null;
+    return res.status(200).json({
+      status: order.status,
+      isTracking: hasLocation && ['PROCESSING', 'SHIPPED'].includes(order.status),
+      courier: order.courier ?? null,
+      destination: order.address ?? null,
+      location: hasLocation
+        ? { lat: order.courierLat, lng: order.courierLng, at: order.courierLocationAt }
+        : null
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving courier location', error: error.message });
   }
 };

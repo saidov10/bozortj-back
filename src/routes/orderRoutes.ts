@@ -10,7 +10,7 @@ import {
   reorder,
   getMyWarranties
 } from '../controllers/orderController';
-import { assignCourier } from '../controllers/courierController';
+import { assignCourier, getCourierLocation } from '../controllers/courierController';
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
@@ -23,6 +23,8 @@ router.get('/warranties', authorize(['BUYER']), getMyWarranties);
 router.get('/', getOrders);
 router.get('/:id', getOrderById);
 router.get('/:id/timeline', getOrderTimeline);
+// Live courier tracking (buyer/seller/courier who are party to the order).
+router.get('/:id/courier-location', getCourierLocation);
 router.put('/:id/status', authorize(['SELLER', 'ADMIN']), updateOrderStatus);
 router.post('/:id/assign-courier', authorize(['SELLER', 'ADMIN']), assignCourier);
 router.post('/:id/cancel', authorize(['BUYER']), cancelOrderByBuyer);
