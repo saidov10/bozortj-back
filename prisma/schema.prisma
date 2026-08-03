@@ -9,71 +9,76 @@ generator client {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  phone        String   @unique // validated format: +992XXXXXXXXX
-  password     String   // hashed
-  role         String   // "ADMIN", "SELLER", "BUYER"
-  name         String   // Buyer name, Admin name, or Seller Contact name
-  avatarUrl    String?  // Profile picture (optional)
-  isBlocked    Boolean  @default(false)
-  language     String   @default("tj") // "tj" | "ru" — preferred language for notifications & bot
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid())
+  email     String   @unique
+  phone     String   @unique // validated format: +992XXXXXXXXX
+  password  String // hashed
+  role      String // "ADMIN", "SELLER", "BUYER"
+  name      String // Buyer name, Admin name, or Seller Contact name
+  avatarUrl String? // Profile picture (optional)
+  isBlocked Boolean  @default(false)
+  language  String   @default("tj") // "tj" | "ru" — preferred language for notifications & bot
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Telegram notification channel (feature: Telegram bot)
-  telegramChatId   String?  @unique // linked Telegram chat id; notifications are mirrored here
-  telegramLinkCode String?  @unique // one-time code the user sends to the bot to link their account
+  telegramChatId   String? @unique // linked Telegram chat id; notifications are mirrored here
+  telegramLinkCode String? @unique // one-time code the user sends to the bot to link their account
 
   // Seller specific
   shopProfile ShopProfile?
 
   // Buyer specific
-  cartItems     CartItem[]
-  wishlist      WishlistItem[]
-  reviews       Review[]
-  orders        Order[]
-  notifications Notification[]
-  reportsFiled  Report[]       @relation("Reporter")
-  addresses     Address[]
-  priceOffers   PriceOffer[]   @relation("BuyerOffers")
+  cartItems         CartItem[]
+  wishlist          WishlistItem[]
+  reviews           Review[]
+  orders            Order[]
+  notifications     Notification[]
+  reportsFiled      Report[]           @relation("Reporter")
+  addresses         Address[]
+  priceOffers       PriceOffer[]       @relation("BuyerOffers")
   pushSubscriptions PushSubscription[]
-  questionsAsked ProductQuestion[]
-  recentlyViewed RecentlyViewed[]
+  questionsAsked    ProductQuestion[]
+  recentlyViewed    RecentlyViewed[]
 
   // Chat relation
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
 
   // Engagement & new features
-  shopFollows        ShopFollow[]
-  stockAlerts        StockNotification[]
-  giftRegistries     GiftRegistry[]
-  courierDeliveries  Order[]             @relation("CourierOrders")
-  shoppingLists      ShoppingList[]
-  reviewVotes        ReviewVote[]
-  bids               Bid[]
-  wonAuctions        Auction[]           @relation("AuctionWinner")
+  shopFollows       ShopFollow[]
+  stockAlerts       StockNotification[]
+  giftRegistries    GiftRegistry[]
+  courierDeliveries Order[]             @relation("CourierOrders")
+  shoppingLists     ShoppingList[]
+  reviewVotes       ReviewVote[]
+  bids              Bid[]
+  wonAuctions       Auction[]           @relation("AuctionWinner")
+
+  // New feature relations
+  rentalBookings RentalBooking[] // иҷора — items this user has rented
+  preorders      Preorder[] // фармоиши пешакӣ — items pre-booked
+  buyerRequests  BuyerRequest[] // аукциони баръакс — "I want X" requests
 }
 
 model ShopProfile {
-  id               String    @id @default(uuid())
-  userId           String    @unique
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shopName         String    @unique
-  description      String
-  autoReplyText    String?
-  autoReplyEnabled Boolean   @default(false)
-  categoryId       String?   // The single category this shop is allowed to sell in
-  category         Category? @relation(fields: [categoryId], references: [id])
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopName              String    @unique
+  description           String
+  autoReplyText         String?
+  autoReplyEnabled      Boolean   @default(false)
+  categoryId            String? // The single category this shop is allowed to sell in
+  category              Category? @relation(fields: [categoryId], references: [id])
   // Delivery pricing — the seller sets their own flat delivery fee, with an
   // optional order value above which delivery is free.
-  deliveryFee            Float   @default(0)
-  freeDeliveryThreshold  Float?
+  deliveryFee           Float     @default(0)
+  freeDeliveryThreshold Float?
 
   // Self-pickup: buyers can collect from the shop and skip the delivery fee.
-  allowPickup    Boolean  @default(false)
-  pickupAddress  String?
+  allowPickup   Boolean @default(false)
+  pickupAddress String?
 
   // Installments (насия): sellers opt in and choose which month plans they offer.
   installmentEnabled Boolean @default(false)
@@ -81,18 +86,18 @@ model ShopProfile {
 
   // Vacation mode (реҷаи таътил): while on, the shop's products can't be ordered
   // and chat auto-replies with the vacation message.
-  vacationMode    Boolean  @default(false)
+  vacationMode    Boolean   @default(false)
   vacationMessage String?
   vacationUntil   DateTime?
 
   // Storefront customization (ороиши витрина).
-  bannerUrl         String?
-  brandColor        String?  // hex, e.g. "#0A7E3D"
-  aboutText         String?
+  bannerUrl          String?
+  brandColor         String? // hex, e.g. "#0A7E3D"
+  aboutText          String?
   featuredProductIds String[] @default([])
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products    Product[]
   orderItems  OrderItem[]
@@ -103,14 +108,19 @@ model ShopProfile {
   followers   ShopFollow[]
   bundles     Bundle[]
   auctions    Auction[]
+
+  // New feature relations
+  liveStreams LiveStream[] // live-фурӯш sessions this shop runs
+  proposals   SellerProposal[] // reverse-auction bids this shop made
 }
 
 model Category {
-  id            String        @id @default(uuid())
-  name          String        @unique
+  id            String         @id @default(uuid())
+  name          String         @unique
   subcategories Subcategory[]
   products      Product[]
   shops         ShopProfile[]
+  buyerRequests BuyerRequest[] // reverse-auction requests scoped to this category
 }
 
 model Subcategory {
@@ -132,38 +142,38 @@ model Brand {
 model Color {
   id       String           @id @default(uuid())
   name     String           @unique
-  hexCode  String?          // e.g. "#FF0000" for rendering color swatches
+  hexCode  String? // e.g. "#FF0000" for rendering color swatches
   products Product[]
   variants ProductVariant[]
 }
 
 model Product {
-  id            String         @id @default(uuid())
+  id            String       @id @default(uuid())
   shopId        String
-  shop          ShopProfile    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          ShopProfile  @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name          String
   description   String
   price         Float
   discountPrice Float?
-  isOnDiscount  Boolean        @default(false)
-  colorId       String         // Fallback default color
-  color         Color          @relation(fields: [colorId], references: [id])
-  size          String         // Fallback default size
-  stockQuantity Int            // Fallback total stock (sum of variants)
+  isOnDiscount  Boolean      @default(false)
+  colorId       String // Fallback default color
+  color         Color        @relation(fields: [colorId], references: [id])
+  size          String // Fallback default size
+  stockQuantity Int // Fallback total stock (sum of variants)
   categoryId    String
-  category      Category       @relation(fields: [categoryId], references: [id])
+  category      Category     @relation(fields: [categoryId], references: [id])
   subcategoryId String?
-  subcategory   Subcategory?   @relation(fields: [subcategoryId], references: [id])
+  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id])
   brandId       String
-  brand         Brand          @relation(fields: [brandId], references: [id])
-  attributes    Json?          // Category-specific specifications (key-value), e.g. { "ram": "8GB", "storage": "256GB" }
+  brand         Brand        @relation(fields: [brandId], references: [id])
+  attributes    Json? // Category-specific specifications (key-value), e.g. { "ram": "8GB", "storage": "256GB" }
 
   // Discovery & merchandising
-  viewCount         Int      @default(0)     // total product-page views (powers conversion analytics)
-  lowStockThreshold Int      @default(5)     // seller is alerted once stock drops to/below this
-  lowStockNotified  Boolean  @default(false) // guards against repeated low-stock alerts; reset on restock
-  isPromoted        Boolean  @default(false) // seller-paid featured placement
-  promotedUntil     DateTime?                // promotion is active while now < promotedUntil
+  viewCount         Int       @default(0) // total product-page views (powers conversion analytics)
+  lowStockThreshold Int       @default(5) // seller is alerted once stock drops to/below this
+  lowStockNotified  Boolean   @default(false) // guards against repeated low-stock alerts; reset on restock
+  isPromoted        Boolean   @default(false) // seller-paid featured placement
+  promotedUntil     DateTime? // promotion is active while now < promotedUntil
 
   // Bargaining: offers at/above this unit price are auto-accepted (null = off).
   minAcceptablePrice Float?
@@ -176,30 +186,50 @@ model Product {
   // are reminded before it expires.
   warrantyMonths Int @default(0)
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  // Rental (иҷора): the product can be rented by the day instead of bought.
+  // `rentalDailyPrice` is the per-day charge and `rentalDeposit` a refundable
+  // garav held for the rental period. Bookings block the calendar (RentalBooking).
+  isRentable       Boolean @default(false)
+  rentalDailyPrice Float?
+  rentalDeposit    Float?  @default(0)
+
+  // Pre-order (фармоиши пешакӣ): the item hasn't arrived yet. Buyers reserve now;
+  // the seller sees demand and notifies them on release. `preorderLimit` optionally
+  // caps how many units may be reserved.
+  isPreorder          Boolean   @default(false)
+  preorderReleaseDate DateTime?
+  preorderLimit       Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Cached AI summary of reviews (regenerated when review count grows)
-  reviewSummary      Json?      // { pros: string[], cons: string[], verdict: string }
+  reviewSummary      Json? // { pros: string[], cons: string[], verdict: string }
   reviewSummaryAt    DateTime?
-  reviewSummaryCount Int?       // number of reviewed comments when the summary was generated
+  reviewSummaryCount Int? // number of reviewed comments when the summary was generated
 
-  images        ProductImage[]
-  wishlistItems WishlistItem[]
-  reviews       Review[]
-  variants      ProductVariant[]
-  reports       Report[]
-  flashSales    FlashSale[]
-  priceOffers   PriceOffer[]
-  questions     ProductQuestion[]
-  recentViews   RecentlyViewed[]
-  priceHistory  PriceHistory[]
-  stockAlerts   StockNotification[]
-  videos        ProductVideo[]
-  bundleItems   BundleItem[]
+  images         ProductImage[]
+  wishlistItems  WishlistItem[]
+  reviews        Review[]
+  variants       ProductVariant[]
+  reports        Report[]
+  flashSales     FlashSale[]
+  priceOffers    PriceOffer[]
+  questions      ProductQuestion[]
+  recentViews    RecentlyViewed[]
+  priceHistory   PriceHistory[]
+  stockAlerts    StockNotification[]
+  videos         ProductVideo[]
+  bundleItems    BundleItem[]
   wholesaleTiers WholesaleTier[]
-  registryItems GiftRegistryItem[]
-  auctions      Auction[]
+  registryItems  GiftRegistryItem[]
+  auctions       Auction[]
+
+  // New feature relations
+  rentalBookings RentalBooking[] // иҷора bookings for this product
+  preorders      Preorder[] // фармоиши пешакӣ reservations
+  liveItems      LiveStreamItem[] // live-фурӯш appearances
+  proposals      SellerProposal[] // reverse-auction proposals that link this product
 }
 
 // Per-buyer "recently viewed" history — one row per (buyer, product), refreshed
@@ -217,36 +247,36 @@ model RecentlyViewed {
 }
 
 model ProductVariant {
-  id            String      @id @default(uuid())
+  id            String   @id @default(uuid())
   productId     String
-  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   colorId       String
-  color         Color       @relation(fields: [colorId], references: [id])
+  color         Color    @relation(fields: [colorId], references: [id])
   size          String
   stockQuantity Int
-  price         Float?      // If variant has specific price, otherwise fallback to Product.price
-  discountPrice Float?      // Variant specific discount price
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  price         Float? // If variant has specific price, otherwise fallback to Product.price
+  discountPrice Float? // Variant specific discount price
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  cartItems     CartItem[]
-  orderItems    OrderItem[]
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
   shoppingListItems ShoppingListItem[]
 }
 
 model ProductImage {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   productId    String
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   url          String
-  thumbnailUrl String?  // small resized copy for fast list rendering on slow connections
+  thumbnailUrl String? // small resized copy for fast list rendering on slow connections
 }
 
 model Address {
   id         String   @id @default(uuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title      String   // e.g. "Home", "Office"
+  title      String // e.g. "Home", "Office"
   city       String
   street     String
   building   String
@@ -276,11 +306,11 @@ model FlashSale {
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   shopId     String
   shop       ShopProfile @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  salePrice  Float       // time-limited price (must be below the product's normal price)
+  salePrice  Float // time-limited price (must be below the product's normal price)
   startsAt   DateTime
   endsAt     DateTime
   soldCount  Int         @default(0) // units sold during the sale — broadcast live for urgency
-  stockLimit Int?        // optional cap on units offered at the sale price
+  stockLimit Int? // optional cap on units offered at the sale price
   createdAt  DateTime    @default(now())
 }
 
@@ -296,60 +326,65 @@ model WishlistItem {
 }
 
 model Coupon {
-  id            String       @id @default(uuid())
-  code          String       @unique
-  discountType  String // "PERCENT" or "FIXED"
-  discountValue Float
-  minPurchase   Float        @default(0)
-  maxUsage      Int?
-  usedCount     Int          @default(0)
-  expiryDate    DateTime?
-  shopId        String?
-  shop          ShopProfile? @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  id             String       @id @default(uuid())
+  code           String       @unique
+  discountType   String // "PERCENT" or "FIXED"
+  discountValue  Float
+  minPurchase    Float        @default(0)
+  maxUsage       Int?
+  usedCount      Int          @default(0)
+  expiryDate     DateTime?
+  shopId         String?
+  shop           ShopProfile? @relation(fields: [shopId], references: [id], onDelete: Cascade)
   // When set, only this buyer may redeem the coupon. Used for accepted price
   // offers (bargaining) so the negotiated price is locked to the one buyer.
   assignedUserId String?
-  createdAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
 
   orders Order[]
 }
 
 model Order {
-  id         String         @id @default(uuid())
-  userId     String
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status     String         // "PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
-  totalPrice Float
-  couponId   String?
-  coupon     Coupon?        @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  addressId  String?
-  address    Address?       @relation(fields: [addressId], references: [id], onDelete: SetNull)
-  paymentMethod String       @default("COD") // "COD" (cash on delivery), "ONLINE", or "INSTALLMENT"
-  deliveryFee   Float        @default(0) // sum of each shop's delivery fee at checkout
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String // "PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
+  totalPrice    Float
+  couponId      String?
+  coupon        Coupon?  @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  addressId     String?
+  address       Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  paymentMethod String   @default("COD") // "COD" (cash on delivery), "ONLINE", or "INSTALLMENT"
+  deliveryFee   Float    @default(0) // sum of each shop's delivery fee at checkout
 
-  // Fulfilment: home delivery vs. self-pickup, plus an optional assigned courier.
-  deliveryType String  @default("DELIVERY") // "DELIVERY" | "PICKUP"
+  // Fulfilment: home delivery, self-pickup at the shop, or collection at a shared
+  // pickup point (ПВЗ). Plus an optional assigned courier.
+  deliveryType String  @default("DELIVERY") // "DELIVERY" | "PICKUP" | "PICKUP_POINT"
   courierId    String?
-  courier      User?    @relation("CourierOrders", fields: [courierId], references: [id], onDelete: SetNull)
-  deliverySlot String?  // buyer-chosen delivery window, e.g. "2026-08-02|18:00-21:00"
+  courier      User?   @relation("CourierOrders", fields: [courierId], references: [id], onDelete: SetNull)
+  deliverySlot String? // buyer-chosen delivery window, e.g. "2026-08-02|18:00-21:00"
+
+  // Pickup point (нуқтаи гирифтан) chosen for a "PICKUP_POINT" order.
+  pickupPointId String?
+  pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
 
   // Buyer-initiated cancellation reason (set when a buyer cancels a pending order).
   cancelReason String?
 
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  items      OrderItem[]
-  refund     RefundRequest?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  items         OrderItem[]
+  refund        RefundRequest?
   statusHistory OrderStatusHistory[]
-  payment    Payment?
-  installment InstallmentPlan?
+  payment       Payment?
+  installment   InstallmentPlan?
 }
 
 model OrderStatusHistory {
   id        String   @id @default(uuid())
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  status    String   // "PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
+  status    String // "PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"
   note      String?
   createdAt DateTime @default(now())
 }
@@ -361,7 +396,7 @@ model OrderItem {
   variantId String
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
   quantity  Int
-  price     Float          // Checkout price (takes discount into account)
+  price     Float // Checkout price (takes discount into account)
   shopId    String
   shop      ShopProfile    @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }
@@ -456,12 +491,12 @@ model PriceOffer {
   offeredPrice Float
   message      String?
   status       String      @default("PENDING") // PENDING, ACCEPTED, REJECTED, COUNTERED, EXPIRED
-  counterPrice Float?      // seller's counter-offer, when status = COUNTERED
-  couponCode   String?     // single-use coupon issued on acceptance
-  agreedPrice  Float?      // final agreed unit price once accepted
+  counterPrice Float? // seller's counter-offer, when status = COUNTERED
+  couponCode   String? // single-use coupon issued on acceptance
+  agreedPrice  Float? // final agreed unit price once accepted
   createdAt    DateTime    @default(now())
   respondedAt  DateTime?
-  expiresAt    DateTime    // offer / issued coupon valid until this time
+  expiresAt    DateTime // offer / issued coupon valid until this time
 }
 
 // Product Q&A ("Савол-ҷавоб") — a buyer asks a public question on a product
@@ -485,8 +520,8 @@ model PushSubscription {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   endpoint  String   @unique
-  p256dh    String   // client public key
-  auth      String   // client auth secret
+  p256dh    String // client public key
+  auth      String // client auth secret
   createdAt DateTime @default(now())
 }
 
@@ -498,10 +533,10 @@ model Payment {
   id        String    @id @default(uuid())
   orderId   String    @unique
   order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  provider  String    // "COD", "MOCK", "ALIF", "DC"
+  provider  String // "COD", "MOCK", "ALIF", "DC"
   amount    Float
   status    String    @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
-  reference String?   // provider-side transaction id
+  reference String? // provider-side transaction id
   paidAt    DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -547,14 +582,14 @@ model PriceHistory {
 
 // A "buy together" bundle: several products sold as a set at a discount.
 model Bundle {
-  id             String       @id @default(uuid())
-  shopId         String
-  shop           ShopProfile  @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name           String
-  discountPercent Float       @default(0) // % off the summed product prices
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  items          BundleItem[]
+  id              String       @id @default(uuid())
+  shopId          String
+  shop            ShopProfile  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name            String
+  discountPercent Float        @default(0) // % off the summed product prices
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  items           BundleItem[]
 }
 
 model BundleItem {
@@ -617,9 +652,9 @@ model InstallmentPlan {
   id            String   @id @default(uuid())
   orderId       String   @unique
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  months        Int      // number of monthly payments
-  monthlyAmount Float    // amount due each month
-  totalAmount   Float    // total to be repaid (== order total for this scaffold)
+  months        Int // number of monthly payments
+  monthlyAmount Float // amount due each month
+  totalAmount   Float // total to be repaid (== order total for this scaffold)
   paidMonths    Int      @default(0)
   nextDueDate   DateTime // when the next instalment is due
   status        String   @default("ACTIVE") // ACTIVE, COMPLETED, DEFAULTED
@@ -690,4 +725,131 @@ model Bid {
   createdAt DateTime @default(now())
 
   @@index([auctionId, createdAt])
+}
+
+// ─────────────────────────── New features ───────────────────────────
+
+// Rental booking (иҷора): a buyer rents a product for a date range. Overlapping
+// CONFIRMED/ACTIVE bookings block the calendar so the same item can't be double-booked.
+model RentalBooking {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate  DateTime
+  endDate    DateTime
+  days       Int
+  dailyPrice Float
+  deposit    Float    @default(0)
+  totalPrice Float // days * dailyPrice (deposit is refundable, held separately)
+  status     String   @default("PENDING") // PENDING, CONFIRMED, ACTIVE, RETURNED, CANCELLED
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([productId, startDate, endDate])
+}
+
+// Live shopping (live-фурӯш): a seller runs a timed live session showcasing
+// products at special "live only" prices. Watchers see the current pinned item
+// and price in real time over the socket ("live_update").
+model LiveStream {
+  id          String           @id @default(uuid())
+  shopId      String
+  shop        ShopProfile      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title       String
+  status      String           @default("SCHEDULED") // SCHEDULED, LIVE, ENDED
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  viewerPeak  Int              @default(0)
+  createdAt   DateTime         @default(now())
+  items       LiveStreamItem[]
+}
+
+model LiveStreamItem {
+  id         String     @id @default(uuid())
+  streamId   String
+  stream     LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  livePrice  Float // discounted price applied to the product while the stream is LIVE
+  isFeatured Boolean    @default(false) // the item currently pinned on screen
+
+  // Snapshot of the product's discount state before the live price was applied, so
+  // the original pricing can be restored precisely when the stream ends.
+  origIsOnDiscount  Boolean?
+  origDiscountPrice Float?
+
+  createdAt DateTime @default(now())
+
+  @@unique([streamId, productId])
+}
+
+// Pickup point (нуқтаи гирифтан / ПВЗ): a partner location where buyers collect
+// orders instead of paying for courier delivery.
+model PickupPoint {
+  id           String   @id @default(uuid())
+  name         String
+  city         String
+  address      String
+  landmark     String?
+  phone        String?
+  workingHours String? // e.g. "Пн-Сб 09:00-19:00"
+  lat          Float?
+  lng          Float?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  orders Order[]
+}
+
+// Reverse auction (аукциони баръакс): a buyer posts what they want plus a budget;
+// sellers submit competing proposals and the buyer accepts one.
+model BuyerRequest {
+  id                 String           @id @default(uuid())
+  buyerId            String
+  buyer              User             @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  title              String
+  description        String
+  budget             Float
+  categoryId         String?
+  category           Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  status             String           @default("OPEN") // OPEN, FULFILLED, CLOSED, EXPIRED
+  acceptedProposalId String? // id of the accepted SellerProposal, when FULFILLED
+  expiresAt          DateTime
+  createdAt          DateTime         @default(now())
+  proposals          SellerProposal[]
+
+  @@index([status, expiresAt])
+}
+
+model SellerProposal {
+  id        String       @id @default(uuid())
+  requestId String
+  request   BuyerRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  shopId    String
+  shop      ShopProfile  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  productId String? // optional link to an existing product being offered
+  product   Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  price     Float
+  message   String?
+  status    String       @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  createdAt DateTime     @default(now())
+
+  @@unique([requestId, shopId])
+}
+
+// Pre-order reservation (фармоиши пешакӣ): a buyer reserves an unreleased product.
+model Preorder {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  status    String   @default("RESERVED") // RESERVED, NOTIFIED, CONVERTED, CANCELLED
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
 }

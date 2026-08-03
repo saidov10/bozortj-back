@@ -299,3 +299,18 @@ export const broadcastAuctionUpdate = (data: {
     ioInstance.emit('auction_update', data);
   }
 };
+
+// Live shopping (live-фурӯш) update — a stream going live/ending, or the seller
+// pinning a new product / changing its live price. Broadcast to everyone so the
+// live-shopping screen updates in real time.
+export const broadcastLiveUpdate = (data: {
+  streamId: string;
+  status: string;
+  event: 'STARTED' | 'ENDED' | 'FEATURE' | 'ITEMS';
+  featuredProductId?: string | null;
+  livePrice?: number | null;
+}) => {
+  if (ioInstance) {
+    ioInstance.emit('live_update', data);
+  }
+};

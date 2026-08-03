@@ -33,6 +33,11 @@ import sellerToolsRoutes from './routes/sellerToolsRoutes';
 import videoRoutes from './routes/videoRoutes';
 import shoppingListRoutes from './routes/shoppingListRoutes';
 import auctionRoutes from './routes/auctionRoutes';
+import rentalRoutes from './routes/rentalRoutes';
+import liveRoutes from './routes/liveRoutes';
+import pickupRoutes from './routes/pickupRoutes';
+import buyerRequestRoutes from './routes/buyerRequestRoutes';
+import preorderRoutes from './routes/preorderRoutes';
 
 
 
@@ -81,6 +86,11 @@ app.use('/api/seller', sellerToolsRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/shopping-lists', shoppingListRoutes);
 app.use('/api/auctions', auctionRoutes);
+app.use('/api/rentals', rentalRoutes);
+app.use('/api/live', liveRoutes);
+app.use('/api/pickup-points', pickupRoutes);
+app.use('/api/buyer-requests', buyerRequestRoutes);
+app.use('/api/preorders', preorderRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

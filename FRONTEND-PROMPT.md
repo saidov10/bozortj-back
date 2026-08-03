@@ -1,136 +1,209 @@
-# 🆕 Промт — 12 функсияи нав (музояда, насия, кафолат, сабадҳои номдор ва ғ.)
+# Frontend prompt — 8 функсияи нав (Bozor TJ)
 
-> Frontend аллакай ҳаст ва ба backend пайваст аст. **Аз нав насоз** — танҳо ин функсияҳои навро ба лоиҳаи мавҷуда илова кун. Ба сохтори мавҷуда (компонентҳо, `lib/api.ts`, `lib/socket.ts`, store, types, роутинг) мутобиқ шав, чизи дигарро вайрон накун.
+Ин ҳуҷҷат барои амалӣ кардани **8 функсияи нав** дар frontend аст. Backend аллакай тайёр
+ва деплой шудааст. Ҳама endpointҳо зери `https://<API_BASE>/api/...` кор мекунанд.
 
-Матни зери `---`-ро ба Claude/frontend AI диҳ.
+**Асосҳо**
+- Auth: header `Authorization: Bearer <JWT>` (ҳамон login-и мавҷуда).
+- Нақшҳо: `BUYER`, `SELLER`, `ADMIN`.
+- Socket.io: ҳамон пайвасти мавҷуда (`io(API_BASE, { auth: { token } })`). Рӯйдодҳои нав: `live_update`.
+- Хатоҳо: `{ message: string }` бо коди статуси мувофиқ.
+- Нархҳо бо **сомонӣ**.
 
----
-
-`BASE = https://bozortj-back.onrender.com`. Расмҳо: `${BASE}{url}`. Токен: `Authorization: Bearer <token>`. Socket ҳамон аст.
-
-Backend 12 функсияи нав гирифт:
-**(2)** мушовири андозаи AI, **(3)** такрори фармоиш, **(4)** сабадҳои номдор, **(6)** бекоркунии фармоиш аз тарафи харидор, **(8)** овоздиҳӣ ба тақризҳо, **(10)** кафолатнома, **(12)** музояда, **(15)** реҷаи таътил, **(16)** мушовири нархи AI, **(17)** ороиши витрина, **(19)** паёми овозӣ, **(20)** слотҳои вақти расониш.
-
----
-
-## 2. 📏 Мушовири андозаи AI
-```
-POST ${BASE}/api/assistant/size-advice   (public)
-     { productId, heightCm?, weightKg?, notes? }
-→ { advice: "Барои шумо андозаи L мувофиқ аст, чунки...", availableSizes: ["M","L","XL"] }
-```
-**UI:** дар саҳифаи моли либос/пойафзол тугмаи «📏 Кадом андоза ба ман?» → модал: қад/вазн/шарҳ → ҷавоби AI.
-
-## 3. 🔁 Такрори фармоиш (Reorder)
-```
-POST ${BASE}/api/orders/:id/reorder   (BUYER)
-→ { addedCount, skipped: ["Номи моли тамомшуда"] }
-```
-Ҳамаи молҳои фармоиши кӯҳна ба сабад бармегарданд (молҳои тамомшуда партофта мешаванд).
-**UI:** дар ҳар фармоиши кӯҳна тугмаи «🔁 Боз ҳамин» → баъд ба сабад бирав. Агар `skipped` бошад, тоуст нишон деҳ.
-
-## 4. 📝 Сабадҳои номдор (Shopping Lists)
-```
-GET    ${BASE}/api/shopping-lists                    (BUYER)  → { lists: [{ id, name, items[] }] }
-POST   ${BASE}/api/shopping-lists                    (BUYER)  { name }
-DELETE ${BASE}/api/shopping-lists/:id                (BUYER)
-POST   ${BASE}/api/shopping-lists/:id/items          (BUYER)  { variantId, quantity? }
-DELETE ${BASE}/api/shopping-lists/:id/items/:itemId  (BUYER)
-POST   ${BASE}/api/shopping-lists/:id/move-to-cart   (BUYER)  → { addedCount, skipped }
-```
-Айтемҳо ба **variantId** ишора мекунанд (мисли сабад).
-**UI:** саҳифаи «Рӯйхатҳои ман» — сохтани рӯйхат («барои тӯй», «мактаб»), илова/ҳазфи молҳо, тугмаи «Ба сабад кӯчонидан». Дар саҳифаи мол тугмаи «＋ Ба рӯйхат».
-
-## 6. ❌ Бекоркунии фармоиш (харидор)
-```
-POST ${BASE}/api/orders/:id/cancel   (BUYER)   { reason? }
-```
-Танҳо то статуси **PENDING** (пеш аз омодасозӣ). Захира барқарор мешавад, фурӯшанда огоҳӣ мегирад.
-**UI:** дар фармоиши PENDING тугмаи «Бекор кардани фармоиш» + майдони сабаб. Баъди PROCESSING тугма ғайрифаъол.
-
-## 8. 👍 Овоздиҳӣ ба тақризҳо
-```
-POST ${BASE}/api/products/reviews/:reviewId/helpful   (BUYER)
-→ { voted: true|false, helpfulCount }
-```
-Toggle аст (бори дуюм → овоз бардошта мешавад). Тақризҳо дар саҳифаи мол акнун аз рӯи `helpfulCount` тартиб дода мешаванд ва ҳар тақриз `helpfulCount` дорад.
-**UI:** зери ҳар тақриз «👍 Фоиданок ({helpfulCount})» — клик toggle мекунад.
-
-## 10. 🛡 Кафолатнома (Warranty)
-Фурӯшанда ҳангоми сохтан/навсозии мол:
-```
-POST/PUT ${BASE}/api/products[/:id]  (SELLER)  ... + warrantyMonths: 12
-```
-Дар ҷавоби мол майдони `warrantyMonths` ҳаст. Кафолатҳои фаъоли харидор:
-```
-GET ${BASE}/api/orders/warranties   (BUYER)
-→ { warranties: [{ productName, image, warrantyMonths, startDate, expiryDate, daysLeft, active }] }
-```
-**UI:** дар форми мол майдони «Кафолат (моҳ)». Дар саҳифаи мол нишони «🛡 Кафолат 12 моҳ». Саҳифаи «Кафолатҳои ман» бо `expiryDate` ва огоҳии «≤30 рӯз монд».
-
-## 12. 🔨 Музояда (Auction)
-```
-GET  ${BASE}/api/auctions             (public)  → { auctions: [...] }   // фаъол
-GET  ${BASE}/api/auctions/:id          (public)  → { auction, bids: [{ amount, at, bidder }] }
-GET  ${BASE}/api/auctions/mine         (SELLER)
-POST ${BASE}/api/auctions              (SELLER)  { productId, startPrice, endsAt, bidIncrement? }
-POST ${BASE}/api/auctions/:id/bid      (BUYER)   { amount }
-```
-`auction` = `{ currentPrice, bidIncrement, endsAt, secondsRemaining, currentBidder, isActive, product{...} }`.
-Пешниҳоди нав бояд >= `currentPrice + bidIncrement` бошад (пешниҳоди аввал = `startPrice`).
-**Socket:** `auction_update { auctionId, productId, currentPrice, currentBidderId, status }` — нархро live навсозӣ кун. Огоҳиҳо: `OUTBID` (пешӣ гирифтанд), `AUCTION_WON` (бо коди купон), `AUCTION_SOLD`.
-Ғолиб коди купон мегирад ва бо нархи бурда мехарад.
-**UI:** саҳифаи `/auctions` (рӯйхат бо таймер) + `/auctions/:id` (таймери live, нархи ҷорӣ, майдони пешниҳод, таърихи биддҳо). Дар панели фурӯшанда — сохтани музояда.
-
-## 15. 🌴 Реҷаи таътил (фурӯшанда)
-```
-PUT ${BASE}/api/shops/settings/auto-reply  (SELLER)
-    { vacationMode: true, vacationMessage: "То 15-ум дар таътилам", vacationUntil: "2026-08-15" }
-```
-Ҳангоми таътил: молҳои мағоза харида **намешаванд** (checkout хато медиҳад), чат бо паёми таътил ҷавоби худкор медиҳад.
-**UI:** дар танзимоти мағоза свитчи «Реҷаи таътил» + матн + сана. Дар саҳифаи мағоза баннери «🌴 Дар таътил то ...».
-
-## 16. 💡 Мушовири нархи AI (фурӯшанда)
-```
-POST ${BASE}/api/assistant/price-advice   (SELLER)   { name?, categoryId?, brandId? }
-→ { count, min, max, avg, median, suggestedRange: { low, high }, message }
-```
-Аз рӯи молҳои монанди дар платформа буда таҳлил мекунад.
-**UI:** дар форми гузоштани мол тугмаи «💡 Нархи тавсияшаванда» → нишондоди `suggestedRange` ва `message`.
-
-## 17. 🎨 Ороиши витрина (фурӯшанда)
-```
-PUT ${BASE}/api/shops/settings/auto-reply  (SELLER)
-    { brandColor: "#0A7E3D", aboutText: "...", featuredProductIds: "id1,id2,id3" }
-PUT ${BASE}/api/shops/settings/banner       (SELLER)  multipart "banner" (расм)  → { bannerUrl }
-```
-Дар ҷавоби `GET /api/shops/:id`: `bannerUrl`, `brandColor`, `aboutText`, `featuredProductIds[]`.
-**UI:** дар панели фурӯшанда «Ороиши мағоза» — боркунии баннер, интихоби ранг, матни «Дар бораи мо», интихоби молҳои витрина. Дар саҳифаи мағоза инҳоро истифода бар (баннер боло, ранги брендӣ, блоки «Дар бораи мо», молҳои интихобшуда аввал).
-
-## 19. 🎤 Паёми овозӣ (ҷустуҷӯ/чат)
-```
-POST ${BASE}/api/assistant/voice   (public)  multipart "audio" (m4a/mp3/webm/ogg/wav)
-→ { transcript, reply, products: [...] }
-```
-Backend овозро матн мекунад (Whisper) ва ассистентро иҷро мекунад.
-**UI:** дар ҷустуҷӯ/чати AI тугмаи 🎤 → сабти овоз → фиристодан → нишон додани `transcript` + натиҷаҳо.
-
-## 20. 🕐 Слотҳои вақти расониш
-```
-POST ${BASE}/api/orders  (BUYER)  { addressId, deliverySlot: "2026-08-02|18:00-21:00", ... }
-```
-`deliverySlot` матни озод (то 60 ҳарф). Дар ҷавоби фармоиш ва панели курер намоён.
-**UI:** дар checkout интихоби вақт (имрӯз/фардо + бозаи соатҳо), сатрро ҳамчун `deliverySlot` фирист.
+> Эзоҳ: аз ин 8 функсия, **№6 (Таърихи нарх)** ва **№7 (Муқоисаи маҳсулот)** аллакай
+> дар backend буданд — танҳо UI-ро васл кунед (endpointҳо дар охир). №1, 5, 8, 10, 11, 20 нав.
 
 ---
 
-### Хулоса — саҳифаҳо ва ҷойҳо
-- **Checkout:** слоти вақт (№20).
-- **Саҳифаи фармоиш:** бекоркунӣ (№6), такрор (№3).
-- **Саҳифаи мол:** мушовири андоза (№2), овоздиҳӣ ба тақриз (№8), нишони кафолат (№10), «＋ Ба рӯйхат» (№4).
-- **Саҳифаҳои нав:** `/auctions` + `/auctions/:id` (№12), «Рӯйхатҳои ман» (№4), «Кафолатҳои ман» (№10).
-- **Саҳифаи мағоза:** баннер/ранг/дар бораи мо (№17), баннери таътил (№15).
-- **Панели фурӯшанда:** сохтани музояда (№12), реҷаи таътил (№15), мушовири нарх (№16), ороиши витрина (№17), майдони кафолат (№10).
-- **Ҷустуҷӯ/AI:** паёми овозӣ 🎤 (№19).
+## 1) Иҷора (Rental) — `/api/rentals`
 
-Огоҳиҳои нав: `OUTBID`, `AUCTION_WON`, `AUCTION_SOLD`, `ORDER_CANCELLED` — ба ҳамон зангӯла. Socket event нав: `auction_update`.
+Маҳсулотро бо нархи рӯзона, гарав ва тақвими банд-будан иҷора медиҳанд (тӯйҳо, асбобҳо, техника).
+
+**Seller — танзими иҷора барои маҳсулот**
+`PUT /api/rentals/products/:productId/settings` (SELLER)
+```json
+{ "isRentable": true, "rentalDailyPrice": 150, "rentalDeposit": 500 }
+```
+UI: дар саҳифаи таҳрири маҳсулот toggle «Иҷора» + майдонҳои нархи рӯзона ва гарав.
+
+**Public — тақвими дастрасӣ**
+`GET /api/rentals/products/:productId/availability?from=YYYY-MM-DD&to=YYYY-MM-DD`
+→ `{ isRentable, rentalDailyPrice, rentalDeposit, bookedRanges: [{startDate,endDate}], available: true|false|null }`
+UI: календар; рӯзҳои `bookedRanges`-ро ғайрифаъол (disabled) кунед. Вақте `from`/`to` дода шуд,
+`available` нишон медиҳад, ки он бозор холӣ аст ё не.
+
+**Buyer — брон кардан**
+`POST /api/rentals` (BUYER) → `{ productId, startDate, endDate, note? }`
+- `days` ва `totalPrice`-ро backend худаш ҳисоб мекунад (`days × dailyPrice`; гарав алоҳида).
+- Агар сана банд бошад → `409` «Ин сана банд аст».
+
+**Buyer** — `GET /api/rentals/mine` → бронҳои ман.
+**Seller** — `GET /api/rentals/shop` → бронҳо барои молҳои ман.
+**Seller** — `PATCH /api/rentals/:id/status` → `{ status: "CONFIRMED" | "ACTIVE" | "RETURNED" | "CANCELLED" }`.
+**Buyer** — `PATCH /api/rentals/:id/cancel` (танҳо PENDING/CONFIRMED).
+
+Статусҳо: `PENDING → CONFIRMED → ACTIVE → RETURNED` (ё `CANCELLED`). Харидор дар ҳар қадам
+notification мегирад.
+
+---
+
+## 5) Live-фурӯш (Live shopping) — `/api/live` + socket
+
+Фурӯшанда стрим мекунад ва молҳоро бо **нархи махсуси LIVE** мефурӯшад. Вақте стрим `LIVE`
+аст, нархи live ҳамчун тахфифи воқеӣ ба маҳсулот татбиқ мешавад — яъне ҳангоми checkout
+харидор ҳамон нархи арзонро мепардозад. Баъди анҷом нархи аслӣ барқарор мешавад.
+
+**Seller**
+- `POST /api/live` → `{ title, scheduledAt? }` → сохтани стрим (`SCHEDULED`).
+- `POST /api/live/:id/items` → `{ productId, livePrice }` (livePrice < нархи оддӣ).
+- `DELETE /api/live/:id/items/:itemId`.
+- `PATCH /api/live/:id/start` → стрим `LIVE`, тахфифҳо фаъол, followerҳо огоҳ мешаванд.
+- `PATCH /api/live/:id/feature` → `{ productId }` — моли ҷориро дар экран «пин» мекунад.
+- `PATCH /api/live/:id/end` → стрим `ENDED`, нархҳо барқарор.
+- `GET /api/live/mine`.
+
+**Public**
+- `GET /api/live` → стримҳои `LIVE` + `SCHEDULED` (LIVE аввал).
+- `GET /api/live/:id` → стрим бо `items[]` (ҳар item: `livePrice`, `effectivePrice`, `savings`, `isFeatured`, `product`).
+
+**Socket** — рӯйдоди `live_update`:
+```ts
+{ streamId, status, event: "STARTED"|"ENDED"|"FEATURE"|"ITEMS", featuredProductId?, livePrice? }
+```
+UI: саҳифаи Live (лентаи стримҳо + экрани стрим). Ҳангоми `FEATURE` корти моли пин-шударо
+нав кунед; ҳангоми `STARTED/ENDED` статусро нав кунед. Тугмаи «Ҳозир харед» → ба cart илова
+(нархи live аллакай татбиқ шудааст). Видео-стрим худро аз провайдери дилхоҳ (масалан HLS ё
+берунӣ) гузоред — backend танҳо мол ва нархро идора мекунад.
+
+---
+
+## 6) Таърихи нарх (Price history) — аллакай тайёр
+
+`GET /api/products/:id/price-history` → `{ history: [{ price, createdAt }] }`
+UI: дар саҳифаи маҳсулот графики хатӣ (6 моҳ). Барои «тахфиф воқеист ё не» — нархи ҷориро
+бо ҳадди ақали таърих муқоиса кунед.
+
+---
+
+## 7) Муқоисаи маҳсулот (Compare) — аллакай тайёр
+
+`GET /api/products/discovery/compare?ids=a,b,c` (2–4 id)
+→ `{ attributeKeys: string[], products: [...] }`
+UI: ҷадвали паҳлӯ-ба-паҳлӯ. `attributeKeys` — маҷмӯи ҳамаи хусусиятҳо (як сатр барои ҳар
+хусусият, ҳатто агар яке молро надошта бошад). Тугмаи «Муқоиса» дар корти маҳсулот →
+интихоби то 4 мол.
+
+---
+
+## 8) Нуқтаҳои гирифтан (Pickup points / ПВЗ) — `/api/pickup-points`
+
+Шабакаи нуқтаҳо: харидор ба ҷои курьер молро дар нуқтаи қулай мегирад (арзонтар — бе ҳаққи расонидан).
+
+**Public**
+- `GET /api/pickup-points?city=Душанбе` → нуқтаҳои фаъол.
+- `GET /api/pickup-points/cities` → `{ cities: [...] }`.
+
+**Admin** — `GET /api/pickup-points/all`, `POST /`, `PUT /:id`, `DELETE /:id` (soft-deactivate).
+Майдонҳо: `name, city, address, landmark?, phone?, workingHours?, lat?, lng?, isActive`.
+
+**Checkout (интеграция)**: ҳангоми фармоиш `POST /api/orders` акнун қабул мекунад:
+```json
+{ "deliveryType": "PICKUP_POINT", "pickupPointId": "<id>" }
+```
+`deliveryType` метавонад `DELIVERY` | `PICKUP` | `PICKUP_POINT` бошад. Барои `PICKUP_POINT`
+ҳаққи расонидан **0** аст ва `addressId` лозим нест. UI: дар қадами интихоби расонидан варианти
+сеюм «Нуқтаи гирифтан» + рӯйхати нуқтаҳо (бо шаҳр филтр). Дар order-detail нуқтаро нишон диҳед.
+
+---
+
+## 10) Аукциони баръакс (Reverse auction) — `/api/buyer-requests`
+
+Харидор менависад «ин чизро мехоҳам, буҷаам 500 сомонӣ», фурӯшандагон пешниҳод (proposal)
+мефиристанд ва рақобат мекунанд.
+
+**Buyer**
+- `POST /api/buyer-requests` → `{ title, description, budget, categoryId?, expiresInDays? }` (default 7 рӯз).
+- `GET /api/buyer-requests/mine` → дархостҳои ман бо **ҳамаи** proposalҳо (мураттаб аз рӯи нарх).
+- `POST /api/buyer-requests/:id/accept/:proposalId` → қабули пешниҳод (боқӣ рад мешаванд).
+- `PATCH /api/buyer-requests/:id/close` → бастани дархост.
+
+**Public / Seller**
+- `GET /api/buyer-requests?status=OPEN&categoryId=` → дархостҳои кушода (барои фурӯшандагон).
+- `GET /api/buyer-requests/:id` → детал. **Танҳо соҳиб** ҳамаи proposalҳоро мебинад; дигарон
+  танҳо `proposalCount` (нархи рақибон пинҳон).
+
+**Seller**
+- `POST /api/buyer-requests/:id/proposals` → `{ price, message?, productId? }` (як proposal барои ҳар мағоза; upsert).
+- `GET /api/buyer-requests/proposals/mine` → пешниҳодҳои ман бо ҳолаташон.
+
+UI: ду намуд — (а) харидор: форми «Дархост» + рӯйхати proposalҳо бо нарх/мағоза, тугмаи «Қабул»;
+(б) фурӯшанда: лентаи дархостҳои кушода + форми «Пешниҳод». Notificationҳо: proposalи нав,
+қабул/рад.
+
+---
+
+## 11) Фармоиши пешакӣ (Pre-order) — `/api/preorders`
+
+Моли ҳанӯз наомадаро эълон мекунанд; харидорон пешакӣ брон мекунанд — фурӯшанда талаботро мебинад.
+
+**Seller**
+- `PUT /api/preorders/products/:productId/settings` → `{ isPreorder, preorderReleaseDate?, preorderLimit? }`.
+- `GET /api/preorders/shop` → `{ preorders[], demand: [{ productId, name, totalUnits, reservations }] }`.
+- `POST /api/preorders/products/:productId/release` → `{ stockQuantity? }` — молро дастрас мекунад
+  ва **ҳамаи** бронкунандагонро огоҳ мекунад.
+
+**Buyer**
+- `POST /api/preorders` → `{ productId, quantity? }` (як брон барои ҳар мол; агар `preorderLimit` пур бошад → `409`).
+- `GET /api/preorders/mine`.
+- `DELETE /api/preorders/:id` → бекор.
+
+UI: дар маҳсулоти `isPreorder` тугмаи «Пешакӣ фармоиш» (ба ҷои «Ба сабад»), санаи тахминии
+омадан + шумораи бронҳо. Барои фурӯшанда — панели талабот (demand). Ҳангоми release харидор
+notification «Моли пешфармоишкардаатон омад» мегирад.
+
+---
+
+## 20) AI-ёрдамчии хариди пурра (Shopping plan) — `/api/assistant`
+
+Харидор менависад «тӯй дорам, 2000 сомонӣ буҷа, 50 меҳмон» — AI рӯйхати пурраи харид месозад
+ва ҳар бандро ба моли воқеии база мувофиқ мекунад.
+
+`POST /api/assistant/shopping-plan` (public; барои сабт — `Authorization` + нақши BUYER)
+```json
+{ "message": "тӯй дорам, буҷа 2000 сомонӣ, 50 меҳмон", "save": true, "listName": "Тӯй" }
+```
+Ҷавоб:
+```json
+{
+  "summary": "...",
+  "budget": 2000,
+  "totalEstimated": 1840.5,
+  "withinBudget": true,
+  "items": [
+    { "label": "Костюми домод", "quantity": 1, "note": "...",
+      "product": { "id", "name", "effectivePrice", "image", "shopName", ... },
+      "lineTotal": 650 }
+  ],
+  "savedListId": "..."   // агар save=true ва BUYER бошад
+}
+```
+UI: экрани чат/форм — матн ё овоз ворид кунед → нақшаро ҳамчун рӯйхати кортҳо нишон диҳед
+(нархи ҳар банд, ҷамъи умумӣ vs буҷа). Тугмаҳо: «Ҳамаро ба сабад» (агар `save` → рӯйхати
+номдор эҷод мешавад, баъд `POST /api/shopping-lists/:id/move-to-cart`), ё илова кардани
+бандҳои алоҳида. Агар `product: null` бошад — «моли мувофиқ ёфт нашуд» нишон диҳед.
+
+> Талабот: сервер бояд `GROQ_API_KEY` дошта бошад, вагарна `503`.
+
+---
+
+### Ҷамъбасти endpointҳои нав
+| Функсия | Prefix |
+|---|---|
+| Иҷора | `/api/rentals` |
+| Live-фурӯш | `/api/live` (+ socket `live_update`) |
+| Нуқтаҳои гирифтан | `/api/pickup-points` (+ `deliveryType=PICKUP_POINT` дар `/api/orders`) |
+| Аукциони баръакс | `/api/buyer-requests` |
+| Фармоиши пешакӣ | `/api/preorders` |
+| AI хариди пурра | `POST /api/assistant/shopping-plan` |
+| Таърихи нарх (мавҷуд) | `GET /api/products/:id/price-history` |
+| Муқоиса (мавҷуд) | `GET /api/products/discovery/compare?ids=` |

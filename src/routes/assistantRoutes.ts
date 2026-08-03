@@ -8,9 +8,10 @@ import {
   assistantSuggestReply,
   assistantSizeAdvice,
   assistantVoice,
-  assistantPriceAdvice
+  assistantPriceAdvice,
+  assistantShoppingPlan
 } from '../controllers/assistantController';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth';
 
 const router = Router();
 
@@ -26,6 +27,8 @@ router.post('/chat', assistantChat);
 router.post('/photo', uploadMemory.single('photo'), assistantPhoto);
 router.post('/size-advice', assistantSizeAdvice);
 router.post('/voice', uploadMemory.single('audio'), assistantVoice);
+// Full-purchase planner — optional auth so a logged-in buyer can save the plan.
+router.post('/shopping-plan', optionalAuthenticate, assistantShoppingPlan);
 
 // Seller: AI description generator
 router.post(

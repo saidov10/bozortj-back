@@ -8,6 +8,7 @@ import {
   suggestSellerReply,
   recommendSize,
   transcribeAudio,
+  buildShoppingPlan,
   isAssistantConfigured,
   ImageMediaType
 } from '../services/assistantService';
@@ -252,6 +253,74 @@ export const assistantVoice = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Assistant voice error:', error);
     return res.status(500).json({ message: 'Failed to process voice message', error: error?.message });
+  }
+};
+
+// POST /api/assistant/shopping-plan  (public; saving requires a logged-in buyer)
+// Body: { message, save?, listName? }
+// Turns a plain-language event description into a full shopping plan matched to
+// real catalogue products. When `save` is true and the caller is a logged-in
+// buyer, the matched products are stored as a named shopping list.
+export const assistantShoppingPlan = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isAssistantConfigured()) return notConfigured(res);
+
+    const { message } = req.body as { message?: string };
+    if (!message || typeof message !== 'string' || message.trim() === '') {
+      return res.status(400).json({ message: 'Опишите, что вам нужно (например: «тӯй дорам, буҷа 2000 сомонӣ, 50 меҳмон»)' });
+    }
+    if (message.length > 1000) {
+      return res.status(400).json({ message: 'Message is too long (max 1000 characters)' });
+    }
+
+    const plan = await buildShoppingPlan(message.trim());
+
+    // Optionally persist the matched products as a named shopping list.
+    let savedListId: string | null = null;
+    const wantsSave = req.body.save === true || req.body.save === 'true';
+    if (wantsSave && req.user && req.user.role === 'BUYER') {
+      const productIds = plan.items
+        .map((l) => l.product?.id)
+        .filter((id): id is string => Boolean(id));
+
+      if (productIds.length > 0) {
+        // Resolve one default variant per matched product (lists reference variants).
+        const variants = await prisma.productVariant.findMany({
+          where: { productId: { in: productIds } },
+          orderBy: { stockQuantity: 'desc' }
+        });
+        const variantByProduct = new Map<string, string>();
+        variants.forEach((v) => {
+          if (!variantByProduct.has(v.productId)) variantByProduct.set(v.productId, v.id);
+        });
+
+        const listName =
+          (typeof req.body.listName === 'string' && req.body.listName.trim()) ||
+          `AI: ${message.trim().slice(0, 40)}`;
+
+        const list = await prisma.shoppingList.create({
+          data: { userId: req.user.id, name: listName }
+        });
+        savedListId = list.id;
+
+        for (const line of plan.items) {
+          const pid = line.product?.id;
+          if (!pid) continue;
+          const variantId = variantByProduct.get(pid);
+          if (!variantId) continue;
+          await prisma.shoppingListItem.upsert({
+            where: { listId_variantId: { listId: list.id, variantId } },
+            update: { quantity: line.quantity },
+            create: { listId: list.id, variantId, quantity: line.quantity }
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({ ...plan, savedListId });
+  } catch (error: any) {
+    console.error('Assistant shopping-plan error:', error);
+    return res.status(500).json({ message: 'Failed to build shopping plan', error: error?.message });
   }
 };
 

@@ -49,13 +49,31 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
     if (req.user.role !== 'BUYER') return res.status(403).json({ message: 'Only buyers can place orders' });
 
-    const { couponCode, addressId, deliveryType: rawDeliveryType, installmentMonths, deliverySlot } = req.body;
+    const { couponCode, addressId, deliveryType: rawDeliveryType, installmentMonths, deliverySlot, pickupPointId } = req.body;
 
-    // Fulfilment method — home delivery (needs an address) or self-pickup.
-    const deliveryType = rawDeliveryType === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
+    // Fulfilment method — home delivery (needs an address), self-pickup at the
+    // shop, or collection at a shared pickup point (нуқтаи гирифтан).
+    const deliveryType =
+      rawDeliveryType === 'PICKUP'
+        ? 'PICKUP'
+        : rawDeliveryType === 'PICKUP_POINT'
+          ? 'PICKUP_POINT'
+          : 'DELIVERY';
 
     if (deliveryType === 'DELIVERY' && !addressId) {
       return res.status(400).json({ message: 'Delivery address is required' });
+    }
+
+    // A pickup-point order must reference an active pickup point.
+    let pickupPoint = null;
+    if (deliveryType === 'PICKUP_POINT') {
+      if (!pickupPointId) {
+        return res.status(400).json({ message: 'A pickup point is required for pickup-point orders' });
+      }
+      pickupPoint = await prisma.pickupPoint.findUnique({ where: { id: pickupPointId } });
+      if (!pickupPoint || !pickupPoint.isActive) {
+        return res.status(400).json({ message: 'Invalid or inactive pickup point' });
+      }
     }
 
     // Verify address when delivering
@@ -271,7 +289,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           deliverySlot: deliverySlot ? String(deliverySlot).slice(0, 60) : null,
           paymentMethod: installmentPlanMonths ? 'INSTALLMENT' : 'COD',
           couponId: appliedCoupon ? appliedCoupon.id : null,
-          addressId: addressId || null
+          addressId: addressId || null,
+          pickupPointId: deliveryType === 'PICKUP_POINT' ? pickupPointId : null
         }
       });
 

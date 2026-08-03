@@ -505,6 +505,114 @@ export const transcribeAudio = async (buffer: Buffer, filename: string): Promise
   }
 };
 
+// 🛒 Full-purchase planner ("Ёрдамчии хариди пурра"): the buyer describes an
+// event in plain language ("тӯй дорам, 2000 сомонӣ буҷа, 50 меҳмон") and the AI
+// breaks it into a complete shopping list, then matches each line to a real
+// catalogue product so the whole plan can be added to the cart in one go.
+export interface PlanLine {
+  label: string;              // human name of the item, e.g. "Костюми домод"
+  query: string;              // search keyword used to find it
+  quantity: number;
+  note?: string;
+  product: ProductCard | null; // best catalogue match (null if nothing found)
+  lineTotal: number;          // effectivePrice * quantity (0 when unmatched)
+}
+
+export interface ShoppingPlan {
+  summary: string;
+  budget: number | null;
+  items: PlanLine[];
+  totalEstimated: number;
+  withinBudget: boolean | null;
+}
+
+interface PlanSpec {
+  summary: string;
+  budget: number | null;
+  items: { label: string; query: string; quantity: number; note?: string }[];
+}
+
+// Phase 1: ask the model to decompose the request into concrete shopping lines.
+const decomposeRequest = async (message: string): Promise<PlanSpec> => {
+  const completion = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 1500,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `Ту "Ёрдамчии хариди пурра"-и як бозори онлайни Тоҷикистон ҳастӣ. Харидор чорабинӣ ё эҳтиёҷашро бо забони одӣ мегӯяд (тӯй, зодрӯз, мактаб, кӯчидан ва ғ.). Вазифаи ту — онро ба рӯйхати мушаххаси харид тақсим кунӣ.
+Қоидаҳо:
+- Бо забони харидор ҷавоб деҳ (пешфарз тоҷикӣ).
+- Ба буҷа ва шумораи меҳмонон (агар зикр шуда бошад) диққат деҳ — миқдорро мувофиқ ҳисоб кун.
+- Барои ҳар банд калимаи кӯтоҳи ҷустуҷӯ (query) бо тоҷикӣ бидеҳ, ки моли мувофиқро дар база ёбад.
+- Ҳадди аксар 12 банд.
+- Ҷавобро ҲАТМАН танҳо дар формати JSON бо ин сохт баргардон:
+{"summary":"як-ду ҷумлаи кӯтоҳ","budget":<рақам ё null>,"items":[{"label":"номи банд","query":"калимаи ҷустуҷӯ","quantity":<рақам>,"note":"ихтиёрӣ"}]}`
+      },
+      { role: 'user', content: message }
+    ]
+  });
+
+  const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+  const items = Array.isArray(parsed.items) ? parsed.items : [];
+  return {
+    summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+    budget: typeof parsed.budget === 'number' ? parsed.budget : null,
+    items: items
+      .slice(0, 12)
+      .map((it: any) => ({
+        label: typeof it.label === 'string' ? it.label : String(it.query || ''),
+        query: typeof it.query === 'string' ? it.query : String(it.label || ''),
+        quantity: Math.max(1, parseInt(it.quantity) || 1),
+        note: typeof it.note === 'string' ? it.note : undefined
+      }))
+      .filter((it: any) => it.query)
+  };
+};
+
+// Pick the best catalogue match for a line: prefer in-stock, then cheapest.
+const pickBest = (candidates: ProductCard[]): ProductCard | null => {
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((a, b) => {
+    const stockDiff = (b.stockQuantity > 0 ? 1 : 0) - (a.stockQuantity > 0 ? 1 : 0);
+    if (stockDiff !== 0) return stockDiff;
+    return a.effectivePrice - b.effectivePrice;
+  });
+  return sorted[0];
+};
+
+export const buildShoppingPlan = async (message: string): Promise<ShoppingPlan> => {
+  const spec = await decomposeRequest(message);
+
+  const items: PlanLine[] = [];
+  for (const line of spec.items) {
+    const found = await runSearchProducts({ query: line.query });
+    const cards = found.map(toCard);
+    const product = pickBest(cards);
+    const lineTotal = product ? +(product.effectivePrice * line.quantity).toFixed(2) : 0;
+    items.push({
+      label: line.label,
+      query: line.query,
+      quantity: line.quantity,
+      note: line.note,
+      product,
+      lineTotal
+    });
+  }
+
+  const totalEstimated = +items.reduce((s, l) => s + l.lineTotal, 0).toFixed(2);
+  const withinBudget = spec.budget != null ? totalEstimated <= spec.budget : null;
+
+  return {
+    summary: spec.summary,
+    budget: spec.budget,
+    items,
+    totalEstimated,
+    withinBudget
+  };
+};
+
 export interface ReviewSummary {
   pros: string[];
   cons: string[];
