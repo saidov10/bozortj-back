@@ -7,6 +7,7 @@ import { summarizeReviews, isAssistantConfigured, translateProduct } from '../se
 import { buildProductImageRecords } from '../utils/thumbnail';
 import { createLocalizedNotification } from '../services/notificationService';
 import { notifyShopFollowers, notifyBackInStock } from '../services/engagementService';
+import { notifyNewProductToSavedSearches } from '../services/savedSearchService';
 import { postToChannel } from '../services/telegramService';
 
 // Fire-and-forget: fill in Russian name/description via the AI translator, so a
@@ -243,6 +244,9 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
         `Мағозаи «${shop.shopName}» моли нав гузошт: «${product.name}».`,
         { type: 'NEW_PRODUCT', productId: product.id, shopId: shop.id }
       );
+
+      // Alert buyers whose saved search matches this new product.
+      void notifyNewProductToSavedSearches(product.id);
     }
 
     return res.status(201).json({
@@ -1282,6 +1286,104 @@ export const getTrendingProducts = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Error retrieving trending products', error: error.message });
+  }
+};
+
+// 15b. Personalized "For You" feed (Buyer) — GET /api/products/discovery/for-you
+// Ranks the catalogue against the buyer's own behaviour: the categories & brands
+// they viewed, wishlisted and bought. Cold-start falls back to trending/newest.
+export const getForYouFeed = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const userId = req.user.id;
+    const limit = 16;
+
+    // Gather behaviour signals in parallel.
+    const [viewed, wishlisted, purchased] = await Promise.all([
+      prisma.recentlyViewed.findMany({
+        where: { userId },
+        orderBy: { viewedAt: 'desc' },
+        take: 50,
+        select: { productId: true, product: { select: { categoryId: true, brandId: true } } }
+      }),
+      prisma.wishlistItem.findMany({
+        where: { userId },
+        select: { productId: true, product: { select: { categoryId: true, brandId: true } } }
+      }),
+      prisma.orderItem.findMany({
+        where: { order: { userId } },
+        select: { variant: { select: { productId: true, product: { select: { categoryId: true, brandId: true } } } } }
+      })
+    ]);
+
+    // Weight signals: a purchase says more than a wishlist, which says more than a view.
+    const catScore: Record<string, number> = {};
+    const brandScore: Record<string, number> = {};
+    const bump = (cat: string | null | undefined, brand: string | null | undefined, w: number) => {
+      if (cat) catScore[cat] = (catScore[cat] || 0) + w;
+      if (brand) brandScore[brand] = (brandScore[brand] || 0) + w;
+    };
+    viewed.forEach((v) => bump(v.product?.categoryId, v.product?.brandId, 1));
+    wishlisted.forEach((w) => bump(w.product?.categoryId, w.product?.brandId, 2));
+    purchased.forEach((p) => bump(p.variant.product?.categoryId, p.variant.product?.brandId, 3));
+
+    const seenIds = new Set<string>([
+      ...viewed.map((v) => v.productId),
+      ...wishlisted.map((w) => w.productId),
+      ...purchased.map((p) => p.variant.productId)
+    ]);
+
+    const topCats = Object.keys(catScore).sort((a, b) => catScore[b] - catScore[a]).slice(0, 6);
+    const topBrands = Object.keys(brandScore).sort((a, b) => brandScore[b] - brandScore[a]).slice(0, 6);
+
+    // Cold start: no history → fall back to newest in-stock products.
+    if (topCats.length === 0 && topBrands.length === 0) {
+      const newest = await prisma.product.findMany({
+        where: { stockQuantity: { gt: 0 } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: RECOMMENDATION_INCLUDE
+      });
+      return res.status(200).json({ products: newest.map(withRatingSummary), personalized: false });
+    }
+
+    // Candidate pool: products in the buyer's favourite categories/brands, unseen.
+    const candidates = await prisma.product.findMany({
+      where: {
+        id: { notIn: Array.from(seenIds) },
+        OR: [{ categoryId: { in: topCats } }, { brandId: { in: topBrands } }]
+      },
+      take: 80,
+      include: RECOMMENDATION_INCLUDE
+    });
+
+    const scored = candidates
+      .map((p) => {
+        let score = (catScore[p.categoryId] || 0) * 2 + (brandScore[p.brandId] || 0);
+        if (p.isOnDiscount) score += 1.5;         // nudge deals up
+        if (p.stockQuantity > 0) score += 0.5;    // prefer in-stock
+        score += Math.min(p.viewCount, 100) / 200; // gentle popularity tiebreak
+        return { p, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    // Fill from newest if the affine pool was thin.
+    let products = scored.map((s) => s.p);
+    if (products.length < limit) {
+      const exclude = new Set([...seenIds, ...products.map((p) => p.id)]);
+      const fillers = await prisma.product.findMany({
+        where: { id: { notIn: Array.from(exclude) }, stockQuantity: { gt: 0 } },
+        orderBy: { createdAt: 'desc' },
+        take: limit - products.length,
+        include: RECOMMENDATION_INCLUDE
+      });
+      products = [...products, ...fillers];
+    }
+
+    return res.status(200).json({ products: products.map(withRatingSummary), personalized: true });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error building your feed', error: error.message });
   }
 };
 

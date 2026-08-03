@@ -59,6 +59,7 @@ model User {
   rentalBookings RentalBooking[] // иҷора — items this user has rented
   preorders      Preorder[] // фармоиши пешакӣ — items pre-booked
   buyerRequests  BuyerRequest[] // аукциони баръакс — "I want X" requests
+  savedSearches  SavedSearch[] // ҷустуҷӯи захирашуда + огоҳӣ
 }
 
 model ShopProfile {
@@ -112,6 +113,7 @@ model ShopProfile {
   // New feature relations
   liveStreams LiveStream[] // live-фурӯш sessions this shop runs
   proposals   SellerProposal[] // reverse-auction bids this shop made
+  stories     ShopStory[] // 24-hour shop stories
 }
 
 model Category {
@@ -845,6 +847,45 @@ model SellerProposal {
   createdAt DateTime     @default(now())
 
   @@unique([requestId, shopId])
+}
+
+// Saved search + alert (ҷустуҷӯи захирашуда): a buyer stores a search (keywords +
+// filters). When a new product matches, we notify them ("iPhone 13 то 4000 сомонӣ пайдо шуд").
+model SavedSearch {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String? // buyer's label for the search
+  query          String? // free-text keywords
+  categoryId     String?
+  brandId        String?
+  colorId        String?
+  size           String?
+  minPrice       Float?
+  maxPrice       Float?
+  notifyOnNew    Boolean   @default(true) // alert when a new matching product lands
+  lastNotifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@index([categoryId])
+}
+
+// Shop story (Story-и мағоза): a 24-hour photo/video a seller posts, Instagram-style.
+// Auto-expires via `expiresAt`; may deep-link to a product for tap-to-shop.
+model ShopStory {
+  id        String      @id @default(uuid())
+  shopId    String
+  shop      ShopProfile @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  mediaUrl  String
+  mediaType String // "IMAGE" | "VIDEO"
+  caption   String?
+  productId String? // optional linked product (tap-to-shop)
+  viewCount Int         @default(0)
+  createdAt DateTime    @default(now())
+  expiresAt DateTime
+
+  @@index([shopId, expiresAt])
 }
 
 // Pre-order reservation (фармоиши пешакӣ): a buyer reserves an unreleased product.

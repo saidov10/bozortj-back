@@ -39,6 +39,8 @@ import pickupRoutes from './routes/pickupRoutes';
 import buyerRequestRoutes from './routes/buyerRequestRoutes';
 import preorderRoutes from './routes/preorderRoutes';
 import shareRoutes from './routes/shareRoutes';
+import savedSearchRoutes from './routes/savedSearchRoutes';
+import storyRoutes from './routes/storyRoutes';
 
 
 
@@ -93,6 +95,8 @@ app.use('/api/pickup-points', pickupRoutes);
 app.use('/api/buyer-requests', buyerRequestRoutes);
 app.use('/api/preorders', preorderRoutes);
 app.use('/api/share', shareRoutes);
+app.use('/api/saved-searches', savedSearchRoutes);
+app.use('/api/stories', storyRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

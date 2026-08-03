@@ -1,72 +1,100 @@
-# Frontend prompt — Пайгирии зиндаи курьер (Live courier tracking)
+# Frontend prompt — 3 функсияи нав (Bozor TJ)
 
-Ин ҳуҷҷат барои амалӣ кардани **пайгирии зиндаи курьер дар харита** дар frontend аст.
-Backend аллакай тайёр ва деплой шудааст.
+Ин ҳуҷҷат барои амалӣ кардани **3 функсияи нав** дар frontend аст. Backend аллакай тайёр
+ва деплой шудааст. Ҳама endpointҳо зери `https://<API_BASE>/api/...`.
 
 **Асосҳо**
-- `API_BASE` + header `Authorization: Bearer <JWT>`.
-- Нақшҳо: `BUYER`, `COURIER`, `SELLER`.
-- Socket.io: ҳамон пайвасти мавҷуда `io(API_BASE, { auth: { token } })`. Рӯйдоди нав: `courier_location`.
-- Ҷойгиршавӣ: `lat` (−90..90), `lng` (−180..180). Танҳо **нуқтаи охирин** дар база нигоҳ дошта
-  мешавад; ҳаракати зинда тавассути socket меояд.
-- Пайгирӣ танҳо вақте фаъол аст, ки фармоиш `PROCESSING` ё `SHIPPED` бошад.
+- Auth: `Authorization: Bearer <JWT>`. Нақшҳо: `BUYER`, `SELLER`.
+- Хатоҳо: `{ message }` бо коди статус. Нархҳо бо **сомонӣ**.
+- Огоҳиҳо (№8, №10) тавассути системаи notification-и мавҷуда меоянд (in-app + Telegram + Web Push).
+
+Функсияҳо: **8** Ҷустуҷӯи захирашуда + огоҳӣ · **9** Лентаи «Барои шумо» · **10** Story-и мағоза (24 соат).
 
 ---
 
-## 1) Курьер — фиристодани ҷойгиршавӣ (COURIER)
+## 8) Ҷустуҷӯи захирашуда + огоҳӣ — `/api/saved-searches` (BUYER)
 
-`PUT /api/courier/deliveries/:id/location`
+Харидор ҷустуҷӯро бо филтрҳо захира мекунад; вақте моли нави мувофиқ пайдо шуд, огоҳӣ мегирад
+(«iPhone 13 то 4000 сомонӣ пайдо шуд»).
+
+**Захира кардан**
+`POST /api/saved-searches`
 ```json
-{ "lat": 38.5598, "lng": 68.7870 }
+{ "name": "iPhone арзон", "query": "iphone 13", "categoryId": null, "brandId": null,
+  "minPrice": null, "maxPrice": 4000, "notifyOnNew": true }
 ```
-→ `200 { message }`
+→ `201 { savedSearch, matchCount }` — `matchCount` = ҳозир чанд мол мувофиқ аст.
+- Ҳадди ақал як меъёр лозим (`query` ё `categoryId`/`brandId`/`colorId`/нарх).
 
-**UI (аппи курьер):** дар экрани «Расонидани фаъол», вақте курьер молро гирифт (`SHIPPED`),
-бо `navigator.geolocation.watchPosition(...)` ҳар ~10–15 сония ё ҳангоми ҳаракат координатаро
-фиристед. Ҳангоми `DELIVERED` ё пӯшидани экран `clearWatch` кунед.
+**Рӯйхат** — `GET /api/saved-searches` → `{ savedSearches: [{ ...поля, matchCount }] }`.
+**Натиҷаи ҷустуҷӯ ҳозир** — `GET /api/saved-searches/:id/results` → `{ products: [...] }` (то 40 мол).
+**Танзим/тағйир** — `PATCH /api/saved-searches/:id` → `{ name?, notifyOnNew? }` (огоҳиро хомӯш/фаъол).
+**Нест кардан** — `DELETE /api/saved-searches/:id`.
 
-> Хатоҳо: `403` — фармоиш ба ин курьер таъин нашуда; `400` — фармоиш дар роҳ нест (ё координата нодуруст).
+**Огоҳӣ:** вақте фурӯшанда моли мувофиқ мегузорад, харидор notification мегирад бо
+`meta: { type: "SAVED_SEARCH_MATCH", productId, savedSearchId }` — ба саҳифаи мол deep-link кунед.
+
+**UI:** дар саҳифаи ҷустуҷӯ/натиҷаҳо тугмаи «🔔 Ин ҷустуҷӯро захира кун». Дар профил бахши
+«Ҷустуҷӯҳои ман» бо `matchCount` ва toggle-и огоҳӣ.
 
 ---
 
-## 2) Харидор — дидани курьер дар харита (BUYER)
+## 9) Лентаи «Барои шумо» — `GET /api/products/discovery/for-you` (BUYER)
 
-### Ҳолати ибтидоӣ (REST)
-`GET /api/orders/:id/courier-location`
+Тавсияи шахсӣ аз рӯи рафтори худи харидор (молҳои дидашуда, wishlist, харидҳо). Категория/бренди
+дӯстдоштаро вазн мекунад, тахфиф ва мавҷудиро бартарӣ медиҳад.
+
+Ҷавоб:
 ```json
-{
-  "status": "SHIPPED",
-  "isTracking": true,
-  "courier": { "id": "...", "name": "Алишер", "phone": "+992..." },
-  "destination": { "city": "Душанбе", "street": "...", "building": "12", "landmark": "..." },
-  "location": { "lat": 38.5598, "lng": 68.7870, "at": "2026-08-03T14:20:00Z" }
-}
+{ "products": [ { ...product, averageRating, reviewCount } ], "personalized": true }
 ```
-- `location: null` → курьер ҳанӯз ҷойгиршавиро нафиристодааст → нишон диҳед «Курьер ҳанӯз дар роҳ нест».
-- `isTracking: false` → харитаро пинҳон кунед (фармоиш ё нарасидааст ё аллакай `DELIVERED`).
+- `personalized: false` → харидор ҳанӯз таърих надорад (cold-start), молҳои нав нишон дода шуданд.
+- Формати `products` ҳамон формати оддии рӯйхати мол (кортҳоро мисли ҳамеша render кунед).
 
-### Навшавии зинда (socket)
-```ts
-socket.on('courier_location', ({ orderId, lat, lng, at }) => {
-  if (orderId === currentOrderId) moveMarker(lat, lng);   // маркери курьерро ҳаракат диҳед
-});
+**UI:** дар саҳифаи асосӣ блоки «✨ Барои шумо» (карусель ё грид). Агар `personalized: false`,
+метавонед сарлавҳаро «Молҳои нав» кунед.
+
+---
+
+## 10) Story-и мағоза (24 соат) — `/api/stories`
+
+Фурӯшанда акс/видеои кӯтоҳ мегузорад, ки баъди **24 соат** худкор нопадид мешавад (мисли Instagram).
+Метавонад ба мол линк дошта бошад (tap-to-shop).
+
+**Фурӯшанда — гузоштан** (`multipart/form-data`)
+`POST /api/stories` — майдони файл **`story`** (акс: jpg/png/webp ё видео: mp4/mov/webm, то 30MB)
++ `caption?`, `productId?` (линк ба моли худи мағоза).
+→ `201 { story: { id, mediaUrl, mediaType: "IMAGE"|"VIDEO", caption, productId, expiresAt } }`
+
+**Фурӯшанда** — `GET /api/stories/mine` (бо `isActive`), `DELETE /api/stories/:id`.
+
+**Public — лентаи Story (tray)**
+`GET /api/stories` →
+```json
+{ "trays": [
+  { "shopId", "shopName", "bannerUrl", "brandColor", "latestAt",
+    "stories": [ { "id", "mediaUrl", "mediaType", "caption", "productId", "viewCount", "expiresAt" } ] }
+] }
 ```
-- Аввал бо REST ҳолати ибтидоиро гиред → маркерро гузоред → баъд бо socket навсозӣ кунед.
-- Дастрасӣ: харидори соҳиби фармоиш, курьери таъиншуда ва фурӯшандаи молҳои дохили фармоиш.
+- Як tray барои ҳар мағоза (мағозаи навтарин аввал) — мисли қатори доирачаҳои Story дар боло.
 
-**UI:** дар саҳифаи пайгирии фармоиш (order timeline) блоки харита. Ду маркер: **курьер** (ҳаракаткунанда)
-ва **манзили харидор** (`destination`). Номи курьер + тугмаи «Занг задан» (`tel:phone`). Харитаро
-аз ҳар провайдери дилхоҳ (Leaflet + OpenStreetMap, 2GIS, Google Maps) гузоред — backend танҳо
-координатаҳоро медиҳад.
+**Public** — `GET /api/stories/shop/:shopId` → Story-ҳои фаъоли як мағоза.
+**Public** — `POST /api/stories/:id/view` → ҳисоби намоиш (ҳангоми кушодани ҳар story занг занед).
+
+**UI:**
+- Дар саҳифаи асосӣ/мағоза қатори доирачаҳои Story (аватар/баннери мағоза, ҳошия бо `brandColor`).
+- Кушодан → намоишгари пурраэкран (акс/видео), progress-bar, худкор гузаштан ба story-и оянда.
+- `mediaType === "VIDEO"` → `<video autoplay muted playsinline>`; вагарна `<img>`.
+- Агар `productId` бошад → тугмаи «🛍️ Харидан» → саҳифаи мол.
+- Ҳангоми намоиш `POST /:id/view` фиристед. `mediaUrl` нисбӣ аст (`/uploads/...`) — бо `API_BASE` префикс кунед.
 
 ---
 
 ### Ҷамъбаст
-| Амал | Endpoint / event | Нақш |
+| Функсия | Endpoint | Нақш |
 |---|---|---|
-| Курьер координата мефиристад | `PUT /api/courier/deliveries/:id/location` | COURIER |
-| Ҳолати ибтидоӣ | `GET /api/orders/:id/courier-location` | BUYER / SELLER / COURIER |
-| Навшавии зинда | socket `courier_location` `{ orderId, lat, lng, at }` | ҳамаи тарафҳо |
+| Ҷустуҷӯи захирашуда | `GET/POST/PATCH/DELETE /api/saved-searches`, `/:id/results` | BUYER |
+| Лентаи «Барои шумо» | `GET /api/products/discovery/for-you` | BUYER |
+| Story-и мағоза | `GET /api/stories`, `/shop/:shopId`, `/mine`; `POST /api/stories`, `/:id/view`; `DELETE /:id` | SELLER/public |
 
-> Эзоҳ: промти пешинаи функсияҳои 10–13 (AI-чатбот, назорати нарх, дашборд, share) иваз шуд —
-> он функсияҳо аллакай дар backend деплой шудаанд ва кор мекунанд.
+> Эзоҳ: промти пешинаи пайгирии курьер иваз шуд — он функсия аллакай дар backend деплой шудааст.

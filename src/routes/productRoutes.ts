@@ -16,7 +16,8 @@ import {
   promoteProduct,
   getTrendingProducts,
   getPriceHistory,
-  toggleReviewHelpful
+  toggleReviewHelpful,
+  getForYouFeed
 } from '../controllers/productController';
 import {
   getProductQuestions,
@@ -47,6 +48,7 @@ router.get('/discovery/promoted', getPromotedProducts);
 router.get('/discovery/trending', getTrendingProducts);
 router.get('/discovery/compare', compareProducts);
 router.get('/discovery/recently-viewed', authenticate, authorize(['BUYER']), getRecentlyViewed);
+router.get('/discovery/for-you', authenticate, authorize(['BUYER']), getForYouFeed);
 
 // Public routes
 router.get('/', getProducts);

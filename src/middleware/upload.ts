@@ -25,6 +25,8 @@ const storage = multer.diskStorage({
       dest = 'uploads/refunds/';
     } else if (file.fieldname === 'video') {
       dest = 'uploads/videos/';
+    } else if (file.fieldname === 'story') {
+      dest = 'uploads/stories/';
     }
     ensureDirExists(dest);
     cb(null, dest);
@@ -88,6 +90,21 @@ const videoUpload = multer({
 });
 
 export const uploadProductVideo = videoUpload.single('video');
+
+// ---- Shop story upload: a single image OR short video (field "story") ----
+const storyFilter = (req: any, file: any, cb: any) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isImage = /jpeg|jpg|png|gif|webp/.test(ext) && /image\//.test(file.mimetype);
+  const isVideo = /mp4|mov|webm/.test(ext) || /video\//.test(file.mimetype);
+  if (isImage || isVideo) return cb(null, true);
+  cb(new Error('Story must be an image (jpg, png, webp) or video (mp4, mov, webm)'));
+};
+
+export const uploadStory = multer({
+  storage,
+  fileFilter: storyFilter,
+  limits: { fileSize: 30 * 1024 * 1024 } // 30MB
+}).single('story');
 
 // ---- CSV upload for bulk product import (kept in memory for parsing) ----
 const csvUpload = multer({
