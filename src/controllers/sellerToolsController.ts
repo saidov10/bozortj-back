@@ -183,6 +183,113 @@ export const importProductsCsv = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// GET /api/seller/price-insights  (SELLER) — "нархнома": compares each of the
+// seller's products against the median effective price of comparable products
+// from OTHER shops (same category, refined by shared name terms / brand) and flags
+// items priced noticeably above or below the market, with a suggested price.
+const effective = (p: { price: number; discountPrice: number | null; isOnDiscount: boolean }): number =>
+  p.isOnDiscount && p.discountPrice != null ? p.discountPrice : p.price;
+
+const median = (nums: number[]): number => {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : +((s[mid - 1] + s[mid]) / 2).toFixed(2);
+};
+
+export const getPriceInsights = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const shop = await prisma.shopProfile.findUnique({ where: { userId: req.user.id } });
+    if (!shop) return res.status(404).json({ message: 'Shop profile not found' });
+
+    const OVER = 15; // % above market → overpriced
+    const UNDER = -15; // % below market → underpriced (leaving money on the table)
+
+    const myProducts = await prisma.product.findMany({
+      where: { shopId: shop.id },
+      select: {
+        id: true, name: true, price: true, discountPrice: true, isOnDiscount: true,
+        categoryId: true, brandId: true
+      }
+    });
+    if (myProducts.length === 0) return res.status(200).json({ insights: [], checked: 0 });
+
+    // Pull comparable products from other shops, grouped by category, in one query.
+    const categoryIds = Array.from(new Set(myProducts.map((p) => p.categoryId)));
+    const others = await prisma.product.findMany({
+      where: { categoryId: { in: categoryIds }, shopId: { not: shop.id } },
+      select: { name: true, price: true, discountPrice: true, isOnDiscount: true, categoryId: true, brandId: true },
+      take: 2000
+    });
+    const othersByCategory = new Map<string, typeof others>();
+    others.forEach((o) => {
+      const arr = othersByCategory.get(o.categoryId) || [];
+      arr.push(o);
+      othersByCategory.set(o.categoryId, arr);
+    });
+
+    const insights = myProducts.map((p) => {
+      const pool = othersByCategory.get(p.categoryId) || [];
+      const terms = p.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+      // Prefer close matches (shared name term or same brand); fall back to whole category.
+      let comparable = pool.filter(
+        (o) =>
+          o.brandId === p.brandId ||
+          terms.some((t) => o.name.toLowerCase().includes(t))
+      );
+      let basis: 'similar' | 'category' = 'similar';
+      if (comparable.length < 3) {
+        comparable = pool;
+        basis = 'category';
+      }
+
+      const myPrice = effective(p);
+      const marketMedian = median(comparable.map(effective));
+      const deltaPercent = marketMedian > 0 ? +(((myPrice - marketMedian) / marketMedian) * 100).toFixed(1) : 0;
+
+      let status: 'overpriced' | 'underpriced' | 'fair' | 'no_data' = 'fair';
+      if (comparable.length === 0 || marketMedian === 0) status = 'no_data';
+      else if (deltaPercent > OVER) status = 'overpriced';
+      else if (deltaPercent < UNDER) status = 'underpriced';
+
+      return {
+        productId: p.id,
+        name: p.name,
+        myPrice,
+        marketMedian,
+        deltaPercent,
+        status,
+        basis,
+        sampleSize: comparable.length,
+        // A gentle nudge toward the market when far off.
+        suggestedPrice:
+          status === 'overpriced' ? +(marketMedian * 1.03).toFixed(2)
+          : status === 'underpriced' ? +(marketMedian * 0.98).toFixed(2)
+          : null
+      };
+    });
+
+    // Most actionable first: biggest overprice, then underprice.
+    insights.sort((a, b) => {
+      const rank = (s: string) => (s === 'overpriced' ? 0 : s === 'underpriced' ? 1 : s === 'fair' ? 2 : 3);
+      if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+      return Math.abs(b.deltaPercent) - Math.abs(a.deltaPercent);
+    });
+
+    const summary = {
+      overpriced: insights.filter((i) => i.status === 'overpriced').length,
+      underpriced: insights.filter((i) => i.status === 'underpriced').length,
+      fair: insights.filter((i) => i.status === 'fair').length,
+      noData: insights.filter((i) => i.status === 'no_data').length
+    };
+
+    return res.status(200).json({ checked: insights.length, summary, insights });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error computing price insights', error: error.message });
+  }
+};
+
 // GET /api/seller/qr  (SELLER) — a QR code (PNG data URL) linking to the shop
 // page, so the seller can print it and stick it on their bazaar stall.
 export const getShopQrCode = async (req: AuthRequest, res: Response) => {

@@ -25,6 +25,7 @@ import {
   getPendingQuestions
 } from '../controllers/qaController';
 import { subscribeStock, unsubscribeStock } from '../controllers/engagementController';
+import { productInstantAnswer, suggestQuestionAnswer } from '../controllers/productAIController';
 import { getProductWholesaleTiers, setWholesaleTiers } from '../controllers/wholesaleController';
 import { getProductVideos, addProductVideo, deleteProductVideo } from '../controllers/videoController';
 import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth';
@@ -37,6 +38,8 @@ const router = Router();
 // Product Q&A (register before '/:id' catch-alls)
 router.get('/questions/pending', authenticate, authorize(['SELLER']), getPendingQuestions);
 router.post('/questions/:qid/answer', authenticate, authorize(['SELLER']), answerQuestion);
+// AI seller chatbot: draft an answer for a pending question (SELLER).
+router.post('/questions/:qid/ai-draft', authenticate, authorize(['SELLER']), suggestQuestionAnswer);
 
 // Search & discovery (register before '/:id' catch-alls)
 router.get('/search/suggestions', getSearchSuggestions);
@@ -64,6 +67,8 @@ router.delete('/:id/videos/:videoId', authenticate, authorize(['SELLER']), delet
 router.get('/:id/review-summary', getReviewSummary);
 router.get('/:id/questions', getProductQuestions);
 router.post('/:id/questions', authenticate, authorize(['BUYER']), askQuestion);
+// AI instant answer from the product's own data (public product-page chatbot).
+router.post('/:id/ai-question', productInstantAnswer);
 
 // Seller only routes
 router.post(

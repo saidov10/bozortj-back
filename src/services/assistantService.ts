@@ -613,6 +613,73 @@ export const buildShoppingPlan = async (message: string): Promise<ShoppingPlan> 
   };
 };
 
+// 🤖 Seller chatbot: answer a buyer's product question GROUNDED strictly in that
+// product's real data (description, specs, price, sizes/colors, stock, warranty,
+// delivery). If the answer isn't in the data, it says so honestly instead of
+// inventing — so the seller can trust one-tap sending, and buyers get instant help.
+export interface ProductContext {
+  name: string;
+  description: string;
+  price: number;
+  effectivePrice: number;
+  isOnDiscount: boolean;
+  category?: string | null;
+  brand?: string | null;
+  sizes?: string[];
+  colors?: string[];
+  inStock: boolean;
+  stockQuantity: number;
+  warrantyMonths?: number;
+  attributes?: Record<string, any> | null;
+  shopName?: string | null;
+  deliveryFee?: number | null;
+  freeDeliveryThreshold?: number | null;
+  allowPickup?: boolean;
+}
+
+export const answerProductQuestion = async (
+  ctx: ProductContext,
+  question: string
+): Promise<{ answer: string; confident: boolean }> => {
+  const lines = [
+    `Ном: ${ctx.name}`,
+    `Нарх: ${ctx.effectivePrice} сомонӣ${ctx.isOnDiscount ? ` (тахфиф аз ${ctx.price})` : ''}`,
+    ctx.brand ? `Бренд: ${ctx.brand}` : '',
+    ctx.category ? `Категория: ${ctx.category}` : '',
+    ctx.sizes && ctx.sizes.length ? `Андозаҳо: ${ctx.sizes.join(', ')}` : '',
+    ctx.colors && ctx.colors.length ? `Рангҳо: ${ctx.colors.join(', ')}` : '',
+    `Дар анбор: ${ctx.inStock ? `ҳаст (${ctx.stockQuantity})` : 'нест'}`,
+    ctx.warrantyMonths ? `Кафолат: ${ctx.warrantyMonths} моҳ` : 'Кафолат: нест',
+    ctx.attributes && Object.keys(ctx.attributes).length ? `Хусусиятҳо: ${JSON.stringify(ctx.attributes)}` : '',
+    ctx.shopName ? `Мағоза: ${ctx.shopName}` : '',
+    ctx.deliveryFee != null ? `Ҳаққи расонидан: ${ctx.deliveryFee} сомонӣ` : '',
+    ctx.freeDeliveryThreshold != null ? `Расонидани ройгон аз: ${ctx.freeDeliveryThreshold} сомонӣ` : '',
+    ctx.allowPickup ? 'Худ гирифтан аз мағоза: мумкин' : '',
+    `Тавсиф: ${ctx.description}`
+  ].filter(Boolean);
+
+  try {
+    const completion = await getClient().chat.completions.create({
+      model: MODEL,
+      max_tokens: 400,
+      messages: [
+        {
+          role: 'system',
+          content: `Ту ёрдамчии фурӯшандаи як мағозаи онлайни Тоҷикистон ҳастӣ ва ба саволи харидор дар бораи мол ҷавоб медиҳӣ. ТАНҲО аз рӯи маълумоти дар поён додашуда ҷавоб деҳ. Агар ҷавоб дар маълумот набошад, содиқона бигӯ: "Инро аниқ гуфта наметавонам, аз фурӯшанда мепурсам" — ҳеҷ чизро аз худ насоз. Ҷавоб кӯтоҳ (1-3 ҷумла), дӯстона ва бо забони харидор (пешфарз тоҷикӣ).`
+        },
+        { role: 'user', content: `МАЪЛУМОТИ МОЛ:\n${lines.join('\n')}\n\nСАВОЛИ ХАРИДОР: ${question}` }
+      ]
+    });
+    const answer = (completion.choices[0]?.message?.content || '').trim();
+    // Rough confidence flag: if the model deferred to the seller, mark low.
+    const confident = answer !== '' && !/аз фурӯшанда мепурсам|гуфта наметавонам|намедонам/i.test(answer);
+    return { answer, confident };
+  } catch (err) {
+    console.error('answerProductQuestion failed:', err);
+    return { answer: '', confident: false };
+  }
+};
+
 export interface ReviewSummary {
   pros: string[];
   cons: string[];

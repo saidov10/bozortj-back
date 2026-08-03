@@ -206,6 +206,106 @@ export const getSalesHeatmap = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Seller dashboard timeseries (Seller) — GET /api/analytics/dashboard
+// A 30-day daily series (orders / units / revenue) plus period KPIs, growth vs the
+// prior 30 days, and quick action counts — everything a home dashboard chart needs.
+export const getSellerDashboard = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    const shop = await prisma.shopProfile.findUnique({ where: { userId: req.user.id } });
+    if (!shop) return res.status(404).json({ message: 'Shop profile not found' });
+
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const since = new Date(now.getTime() - 60 * dayMs); // pull 60 days to compare periods
+
+    const items = await prisma.orderItem.findMany({
+      where: { shopId: shop.id, order: { status: { not: 'CANCELLED' }, createdAt: { gte: since } } },
+      select: { quantity: true, price: true, orderId: true, order: { select: { createdAt: true } } }
+    });
+
+    // Build a 30-day daily series (oldest → newest).
+    const series: { date: string; orders: number; units: number; revenue: number }[] = [];
+    const dayIndex = new Map<string, number>();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * dayMs);
+      const key = d.toISOString().slice(0, 10);
+      dayIndex.set(key, series.length);
+      series.push({ date: key, orders: 0, units: 0, revenue: 0 });
+    }
+    const ordersPerDay: Record<string, Set<string>> = {};
+
+    // Period accumulators.
+    let rev30 = 0, rev30prev = 0;
+    let units30 = 0;
+    const orders30 = new Set<string>();
+    const orders30prev = new Set<string>();
+    let revToday = 0, rev7 = 0;
+    const ordersToday = new Set<string>();
+    const orders7 = new Set<string>();
+    const startToday = new Date(now.toISOString().slice(0, 10)).getTime();
+    const start7 = now.getTime() - 7 * dayMs;
+    const start30 = now.getTime() - 30 * dayMs;
+    const start60 = now.getTime() - 60 * dayMs;
+
+    items.forEach((it) => {
+      const created = new Date(it.order.createdAt);
+      const t = created.getTime();
+      const rev = it.price * it.quantity;
+      const key = created.toISOString().slice(0, 10);
+
+      if (dayIndex.has(key)) {
+        const row = series[dayIndex.get(key)!];
+        row.units += it.quantity;
+        row.revenue = +(row.revenue + rev).toFixed(2);
+        (ordersPerDay[key] ||= new Set()).add(it.orderId);
+      }
+      if (t >= start30) { rev30 += rev; units30 += it.quantity; orders30.add(it.orderId); }
+      else if (t >= start60) { rev30prev += rev; orders30prev.add(it.orderId); }
+      if (t >= startToday) { revToday += rev; ordersToday.add(it.orderId); }
+      if (t >= start7) { rev7 += rev; orders7.add(it.orderId); }
+    });
+
+    // Fill per-day order counts.
+    Object.entries(ordersPerDay).forEach(([key, set]) => {
+      const idx = dayIndex.get(key);
+      if (idx != null) series[idx].orders = set.size;
+    });
+
+    const growth = (cur: number, prev: number): number | null =>
+      prev > 0 ? +(((cur - prev) / prev) * 100).toFixed(1) : cur > 0 ? 100 : null;
+
+    // Quick action counts.
+    const [pendingOrders, unansweredQuestions, lowStock] = await Promise.all([
+      prisma.orderItem.findMany({
+        where: { shopId: shop.id, order: { status: 'PENDING' } },
+        select: { orderId: true },
+        distinct: ['orderId']
+      }),
+      prisma.productQuestion.count({ where: { product: { shopId: shop.id }, answer: null } }),
+      prisma.product.count({ where: { shopId: shop.id, stockQuantity: { lte: 5 } } })
+    ]);
+
+    return res.status(200).json({
+      series,
+      kpis: {
+        today: { revenue: +revToday.toFixed(2), orders: ordersToday.size },
+        last7Days: { revenue: +rev7.toFixed(2), orders: orders7.size },
+        last30Days: { revenue: +rev30.toFixed(2), orders: orders30.size, units: units30 },
+        revenueGrowthPercent: growth(rev30, rev30prev),
+        ordersGrowthPercent: growth(orders30.size, orders30prev.size)
+      },
+      actions: {
+        pendingOrders: pendingOrders.length,
+        unansweredQuestions,
+        lowStockProducts: lowStock
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Error retrieving dashboard', error: error.message });
+  }
+};
+
 // Get Platform-Wide Analytics (Admin Only)
 export const getAdminAnalytics = async (req: AuthRequest, res: Response) => {
   try {
